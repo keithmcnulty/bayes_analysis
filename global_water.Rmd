@@ -1,0 +1,182 @@
+---
+title: "Global Water Simulation"
+author: "Keith McNulty"
+output: 
+  html_document:
+    code_folding: hide 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center")
+```
+
+## Bayesian Updating
+
+Imagine that you are invited to your neighbours fancy dress party, but you don't know what the theme is.  You have access to a few different costumes, and you need to decide which one to choose.  You could take two approaches to making this decision:
+
+1.  Based on your knowledge of the hosts, and because you want to get in there as soon as possible, you can make an assumption about the theme, get into an appropriate costume and enter the party.  Because it's a party, you'll be able to interact with people and after a while you'll work out how well you chose your costume.  But if you want to change it you'll have to admit defeat, head back to your place and get changed and start again.
+
+2.  You can wait and watch other people enter the party.  Maybe they are not all wearing exactly the same theme, but as you watch each person go in, you can start to update your initial assumptions until you get to a point where you feel you are certain enough to choose a costume without fear of embarassment for getting the theme wrong.  This will take longer, but there's less up front risk of getting it wrong.
+
+In classical statistical models like linear or logistic regression, we are keen to get into the party asap. We make an ingoing assumption about the distribution of our outcome in our population.  For example, we assume a binomial or a Poisson distribution.  In most classical models, this assumption is paramount and remains unviolated -- we do not revisit it throughout the modeling process.  It is a 'truth' from the moment we make the assumption.  Of course, if this assumption is bad, it will lead to useless inferences, and that is a common reason why statistical models can be ineffective or misleading.  We might have to leave the party and choose a different costume.
+
+In Bayesian modeling, we make no such unviolated assumption.  Instead we stake out the neighbour's place for a while.  We construct our model from our data observation by observation.  At the beginning, we make the best assumption we can about the likelihood of our outcome.  In many cases we can make no assumption at all about the likelihood of our outcome and therefore we are *indifferent*, meaning we allow equal likelihood of any outcome possibility.   After each observation we process, we *update* the likelihood of our outcome on the basis of the new information.  This process is known as *Bayesian Updating*.  We call the likelihood function of our outcome before the observation our *prior*, and after the observation we call it our *posterior*.  
+
+Given that we learn about the likelihood of our outcome observation by observation, this is an optimal way of modeling our sample, but it is often computationally expensive compared to classical models.  In fact, this was one of the main reasons why Bayesian analysis was disregarded in the early- to mid- 20th century -- it was not considered practical.  Amazing progress in computational science has now made Bayesian analysis much more approachable.
+
+But Bayesian analysis is not perfect and will not always create a great model.  Poor assumptions about priors can get you off to a terrible start, and sampling bias is just as much a risk as in classical statistical methods.  
+
+## Global Water example
+
+In Richard McElreath's book *Statistical Rethinking*, this example is used to illustrate a Bayesian Updating process.  Imagine we want to determine the proportion $p$ of water on the Earth's surface area.  Assume we initially have no idea about this, so we assume that $p$ has equal likelihood of taking any value between 0 and 1.  
+
+Now imagine that we sample using the following experiment - we spin a globe and then stop it at any point with our finger and record whether the place we stopped it at was water or land.  Now, since there are only two values for this sampling, we know that the probabilty of observing $W$ waters and $L$ lands after $W+L$ observations obeys the binomial distribution as follows:
+
+$$
+P(W, L \mid p) = \frac{(W+L)!}{W!L!}p^{W}(1-p)^{L}
+$$
+Now let's take the first observation.  It's $W$.  So we can calculate that $P(1, 0 \mid p) = p$.  This give us the following posterior distributuion for $p$ after this observation.
+
+```{r}
+library(ggplot2)
+library(latex2exp)
+
+base_plot <- ggplot() +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Likelihood") + 
+  theme_minimal()
+
+p1 <- base_plot +
+  geom_function(fun = function (p) p, color = "blue") + 
+  labs(title = TeX(r'($W$)'))
+
+p1
+
+```
+
+Now let's take a second observation.  It's $L$.  We now have $P(1, 1 \mid p) = 2p(1-p)$.  Let's plot our posterior and prior for our second observation.
+
+```{r}
+p2 <- base_plot +
+  geom_function(fun = function (p) p, linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) {2*p*(1-p)},  color = "blue") +
+  labs(title = TeX(r'($WL$)'))
+
+p2
+
+```
+
+For a third observation of $W$, we have $P(2, 1 \mod p) = 3p^2(1-p)$, so our prior and posterior will be as follows:
+
+```{r}
+p3 <- base_plot +
+  geom_function(fun = function (p) {2*p*(1-p)}, linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) {3*p^2*(1-p)},  color = "blue") +
+  labs(title = TeX(r'($WLW$)'))
+
+p3
+```
+
+We can iterate this for, say, 16 observations, making use of the `dbinom()` function to plot the appropriate binomial functions in each case:
+
+```{r}
+base_plot <- ggplot() +
+  xlim(0, 1) +
+  ylim(0, 1) +
+  xlab("p") +
+  theme_minimal() +
+  theme(axis.text = element_text(size = 5),
+        axis.title.x = element_text(size = 6),
+        axis.title.y = element_blank(),
+        title = element_text(size = 6))
+
+p1 <- base_plot +
+  geom_function(fun = function (p) dbinom(1, size = 1, prob = p),  color = "blue") +
+  labs(title = TeX(r'($W$)'))
+
+p2 <- base_plot +
+  geom_function(fun = function (p) dbinom(1, size = 1, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(1, size = 2, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WL$)'))
+
+p3 <- base_plot +
+  geom_function(fun = function (p) dbinom(1, size = 2, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(2, size = 3, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLW$)'))
+
+p4 <- base_plot +
+  geom_function(fun = function (p) dbinom(2, size = 3, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(3, size = 4, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWW$)'))
+
+p5 <- base_plot +
+  geom_function(fun = function (p) dbinom(3, size = 4, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(4, size = 5, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWW$)'))
+
+p6 <- base_plot +
+  geom_function(fun = function (p) dbinom(4, size = 5, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(4, size = 6, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWL$)'))
+
+p7 <- base_plot +
+  geom_function(fun = function (p) dbinom(4, size = 6, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(5, size = 7, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLW$)'))
+
+p8 <- base_plot +
+  geom_function(fun = function (p) dbinom(5, size = 7, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(5, size = 8, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWL$)'))
+
+p9 <- base_plot +
+  geom_function(fun = function (p) dbinom(5, size = 8, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(6, size = 9, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLW$)'))
+
+p10 <- base_plot +
+  geom_function(fun = function (p) dbinom(6, size = 9, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(7, size = 10, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWW$)'))
+
+p11 <- base_plot +
+  geom_function(fun = function (p) dbinom(7, size = 10, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(8, size = 11, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWW$)'))
+
+p12 <- base_plot +
+  geom_function(fun = function (p) dbinom(8, size = 11, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(9, size = 12, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWWW$)'))
+
+p13 <- base_plot +
+  geom_function(fun = function (p) dbinom(9, size = 12, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(9, size = 13, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWWWL$)'))
+
+p14 <- base_plot +
+  geom_function(fun = function (p) dbinom(9, size = 13, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(10, size = 14, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWWWLW$)'))
+
+p15 <- base_plot +
+  geom_function(fun = function (p) dbinom(10, size = 14, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(10, size = 15, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWWWLWL$)'))
+
+p16 <- base_plot +
+  geom_function(fun = function (p) dbinom(10, size = 15, prob = p), linetype = "dashed", color = "red") +
+  geom_function(fun = function (p) dbinom(11, size = 16, prob = p),  color = "blue") +
+  labs(title = TeX(r'($WLWWWLWLWWWWLWLW$)'))
+
+gridExtra::grid.arrange(p1, p2, p3, p4, 
+                        p5, p6, p7, p8,
+                        p9, p10, p11, p12,
+                        p13, p14, p15, p16,
+                        nrow = 4, ncol = 4)
+
+```
+
+By our 16th iteration, it seems that our most likely value for the proportion of water on the Earth's surface area is around 70%, which it turns out is a pretty accurate estimate.
