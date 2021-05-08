@@ -3,14 +3,17 @@ title: "Global Water Simulation"
 author: "Keith McNulty"
 output: 
   html_document:
-    code_folding: hide 
+    code_folding: hide
+    toc: true
+    toc_float:
+      toc_collapsed: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, fig.align = "center")
 ```
 
-### Bayesian Updating
+## Bayesian Updating
 
 Imagine that you are invited to your neighbours fancy dress party, but you don't know what the theme is.  You have access to a few different costumes, and you need to decide which one to choose.  You could take two approaches to making this decision:
 
@@ -26,7 +29,7 @@ Given that we learn about the likelihood of our outcome observation by observati
 
 But Bayesian analysis is not perfect and will not always create a great model.  Poor assumptions about priors can get you off to a terrible start, and sampling bias is just as much a risk as in classical statistical methods.  
 
-### Global Water example
+## Global Water example
 
 In Richard McElreath's book *Statistical Rethinking*, this example is used to illustrate a Bayesian Updating process.  Imagine we want to determine the proportion $p$ of water on the Earth's surface area.  Assume we initially have no idea about this, so we assume that $p$ has equal likelihood of taking any value between 0 and 1.  
 
@@ -181,6 +184,8 @@ gridExtra::grid.arrange(p1, p2, p3, p4,
 
 By our 16th iteration, it seems that our most likely value for the proportion of water on the Earth's surface area is around 70%, which it turns out is a pretty accurate estimate.
 
+## Approximation methods
+
 ### Grid approximation
 
 Estimating a posterior distribution from a prior distribution can be complicated when you have infinitely many probabilities in a continuous distribution.  Of course, if you choose your prior to be some sort of easily manipulated formula-defined distribution, like a uniform or binomial distribution, things might be easier.  But that constrains us a great deal.  
@@ -201,7 +206,7 @@ get_posterior <- function(n = 20, p_grid = seq(0, 1, length.out = n), priors = r
 
 ```
 
-Now we plot the posterior under a uniform prior for several grid approximations -- 5, 10, 20 and 100 equally spaced points respectively.  As we might expect, the more grid points, the more precise our appproximation of the posterior distribution:
+Now we plot the posterior under a uniform prior for several grid approximations -- 5, 10, 20 and 100 equally spaced points respectively.  As we might expect, the more grid points, the more precise our approximation of the posterior distribution:
 
 ```{r}
 p1 <- ggplot() +
@@ -342,3 +347,7 @@ p4 <- ggplot() +
 gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
 
 ```
+
+### Quadratic approximation
+
+### Markov Chain Monte Carlo
