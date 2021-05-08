@@ -68,7 +68,7 @@ p2
 
 ```
 
-For a third observation of $W$, we have $P(2, 1 \mod p) = 3p^2(1-p)$, so our prior and posterior will be as follows:
+For a third observation of $W$, we have $P(2, 1 \mid p) = 3p^2(1-p)$, so our prior and posterior will be as follows:
 
 ```{r}
 p3 <- base_plot +
