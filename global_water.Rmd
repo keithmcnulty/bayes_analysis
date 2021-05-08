@@ -10,7 +10,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE, fig.align = "center")
 ```
 
-## Bayesian Updating
+### Bayesian Updating
 
 Imagine that you are invited to your neighbours fancy dress party, but you don't know what the theme is.  You have access to a few different costumes, and you need to decide which one to choose.  You could take two approaches to making this decision:
 
@@ -26,7 +26,7 @@ Given that we learn about the likelihood of our outcome observation by observati
 
 But Bayesian analysis is not perfect and will not always create a great model.  Poor assumptions about priors can get you off to a terrible start, and sampling bias is just as much a risk as in classical statistical methods.  
 
-## Global Water example
+### Global Water example
 
 In Richard McElreath's book *Statistical Rethinking*, this example is used to illustrate a Bayesian Updating process.  Imagine we want to determine the proportion $p$ of water on the Earth's surface area.  Assume we initially have no idea about this, so we assume that $p$ has equal likelihood of taking any value between 0 and 1.  
 
@@ -180,3 +180,165 @@ gridExtra::grid.arrange(p1, p2, p3, p4,
 ```
 
 By our 16th iteration, it seems that our most likely value for the proportion of water on the Earth's surface area is around 70%, which it turns out is a pretty accurate estimate.
+
+### Grid approximation
+
+Estimating a posterior distribution from a prior distribution can be complicated when you have infinitely many probabilities in a continuous distribution.  Of course, if you choose your prior to be some sort of easily manipulated formula-defined distribution, like a uniform or binomial distribution, things might be easier.  But that constrains us a great deal.  
+
+Instead, we can work with any prior distribution of we approximate it using a grid of values in the distribution.  This is known as *grid approximation*.  Using our example above, let's write a function to approximate a posterior for our 16th iteration based on a prior and a number of grid points:
+
+```{r}
+# calculate likelihood of observation
+get_posterior <- function(n = 20, p_grid = seq(0, 1, length.out = n), priors = rep(1, n), ...) {
+  prior <- priors
+  likelihood <- dbinom(11, 16, prob = p_grid)
+  # calculate posterior
+  data.frame(
+    p_grid = p_grid,
+    posterior = (likelihood * prior)/sum(likelihood * prior)
+  )
+}
+
+```
+
+Now we plot the posterior under a uniform prior for several grid approximations -- 5, 10, 20 and 100 equally spaced points respectively.  As we might expect, the more grid points, the more precise our appproximation of the posterior distribution:
+
+```{r}
+p1 <- ggplot() +
+  ylim(0, 0.8) +
+  geom_line(aes(x = get_posterior(5)$p_grid, y = get_posterior(5)$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "5 grid points") +
+  theme_minimal()
+
+p2 <- ggplot() +
+  ylim(0, 0.4) +
+  geom_line(aes(x = get_posterior(10)$p_grid, y = get_posterior(10)$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "10 grid points") +
+  theme_minimal()
+
+p3 <- ggplot() +
+  ylim(0, 0.2) +
+  geom_line(aes(x = get_posterior(20)$p_grid, y = get_posterior(20)$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "20 grid points") +
+  theme_minimal()
+
+p4 <- ggplot() +
+  ylim(0, 0.04) +
+  geom_line(aes(x = get_posterior(100)$p_grid, y = get_posterior(100)$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "100 grid points") +
+  theme_minimal()
+  
+gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+
+```
+
+We can also experiment with different priors.  For example we can use a step prior:
+
+```{r}
+step_prior <- function(x) ifelse(x < 0.5, 0, 1)
+
+ggplot() +
+  xlim(0,1) +
+  xlab("p") +
+  ylab("Prior likelihood") +
+  geom_function(fun = step_prior, color = "blue") +
+  theme_minimal()
+```
+
+And we will find equivalent estimates of posteriors:
+```{r}
+p1 <- ggplot() +
+  ylim(0, 0.8) +
+  geom_line(aes(x = get_posterior(5, priors = step_prior(seq(0, 1, length.out = 5)))$p_grid, y = get_posterior(5, prior = step_prior(seq(0, 1, length.out = 5)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "5 grid points") +
+  theme_minimal()
+
+p2 <- ggplot() +
+  ylim(0, 0.5) +
+  geom_line(aes(x = get_posterior(10, prior = step_prior(seq(0, 1, length.out = 10)))$p_grid, y = get_posterior(10, prior = step_prior(seq(0, 1, length.out = 10)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "10 grid points") +
+  theme_minimal()
+
+p3 <- ggplot() +
+  ylim(0, 0.25) +
+  geom_line(aes(x = get_posterior(20, prior = step_prior(seq(0, 1, length.out = 20)))$p_grid, y = get_posterior(20, prior = step_prior(seq(0, 1, length.out = 20)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "20 grid points") +
+  theme_minimal()
+
+p4 <- ggplot() +
+  ylim(0, 0.04) +
+  geom_line(aes(x = get_posterior(100, prior = step_prior(seq(0, 1, length.out = 100)))$p_grid, y = get_posterior(100, prior = step_prior(seq(0, 1, length.out = 100)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "100 grid points") +
+  theme_minimal()
+  
+gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+
+```
+
+And similarly with a peaked prior:
+
+```{r}
+peaked_prior <- function(x) exp(-5 * abs(x - 0.5))
+
+ggplot() +
+  xlim(0,1) +
+  xlab("p") +
+  ylab("Prior likelihood") +
+  geom_function(fun = peaked_prior, color = "blue") +
+  theme_minimal()
+```
+
+We get the following:
+
+```{r}
+p1 <- ggplot() +
+  ylim(0, 0.8) +
+  geom_line(aes(x = get_posterior(5, prior = peaked_prior(seq(0, 1, length.out = 5)))$p_grid, y = get_posterior(5, prior = peaked_prior(seq(0, 1, length.out = 5)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "5 grid points") +
+  theme_minimal()
+
+p2 <- ggplot() +
+  ylim(0, 0.4) +
+  geom_line(aes(x = get_posterior(10, prior = peaked_prior(seq(0, 1, length.out = 10)))$p_grid, y = get_posterior(10, prior = peaked_prior(seq(0, 1, length.out = 10)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "10 grid points") +
+  theme_minimal()
+
+p3 <- ggplot() +
+  ylim(0, 0.2) +
+  geom_line(aes(x = get_posterior(20, prior = peaked_prior(seq(0, 1, length.out = 20)))$p_grid, y = get_posterior(20, prior = peaked_prior(seq(0, 1, length.out = 20)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "20 grid points") +
+  theme_minimal()
+
+p4 <- ggplot() +
+  ylim(0, 0.04) +
+  geom_line(aes(x = get_posterior(100, prior = peaked_prior(seq(0, 1, length.out = 100)))$p_grid, y = get_posterior(100, prior = peaked_prior(seq(0, 1, length.out = 100)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  labs(title = "100 grid points") +
+  theme_minimal()
+  
+gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+
+```
