@@ -348,6 +348,31 @@ gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
 
 ```
 
+Often we are in a position to make an intelligent guess at a prior.  For example, maybe we are sure that more than half but less than three quarters of the Earth's surface area is covered in water.  So we can define a prior that is uniform between 0.5 and 0.75 and zero elsewhere.
+
+```{r}
+intelligent_guess_prior <- function(x) ifelse(x < 0.5, 0, ifelse(x > 0.75, 0, 1))
+
+ggplot() +
+  xlim(0,1) +
+  xlab("p") +
+  ylab("Prior likelihood") +
+  geom_function(fun = intelligent_guess_prior, color = "blue") +
+  theme_minimal()
+
+```
+
+This would then give rise to the following posterior (this time let's just look at the most precise one):
+
+```{r}
+ggplot() +
+  ylim(0, 0.06) +
+  geom_line(aes(x = get_posterior(100, prior = intelligent_guess_prior(seq(0, 1, length.out = 100)))$p_grid, y = get_posterior(100, prior = intelligent_guess_prior(seq(0, 1, length.out = 100)))$posterior), color = "darkblue") +
+  xlab("p") +
+  ylab("Posterior likelihood") +
+  theme_minimal()
+```
+
 ### Quadratic approximation
 
 ### Markov Chain Monte Carlo
