@@ -128,15 +128,15 @@ This seems intuitively correct, since species A is slightly more likely to have 
 
 ### 2H4
 
-In the first case where we have no information about births, the prior probability is 0.5.  We know that the probability the test is positive for species A given species A is 0.8, and we know that the average probability the test is positive for species A is $0.8 \times 0.5 + 0.35 \times 0.5 = 0.575$.  
+The prior probability of Species A is 0.5.  We know that the probability the test is positive for species A given species A is 0.8, and we know that the average probability the test is positive for species A is $0.8 \times 0.5 + 0.35 \times 0.5 = 0.575$.  
 
 $$
 \mathrm{Pr}(A \mid +A) = \frac{\mathrm{Pr} (+A \mid A)\mathrm{Pr} (A)}{\mathrm{Pr}(+A)}
 $$
 
-Therefore the posterior probability is $(0.8 \times 0.5)/0.575 = 0.7$.  
+Therefore the posterior probability of Species A is $(0.8 \times 0.5)/0.575 = 0.7$.  
 
-In the second case for species A we have a probability of a twin followed by a singleton of $0.09$.  For species B it is $0.16$.  So we have:
+Now we have a probability of Species A of 0.7, and therefore a probability of Species B of 0.3.  Given the additional data on births, for species A we have a probability of a twin followed by a singleton of $0.09$.  For species B it is $0.16$.  So we have:
 
 ```{r}
 priors <- c(0.7, 0.3)
@@ -144,3 +144,5 @@ likelihoods <- c(0.09, 0.16)
 posteriors <- likelihoods*priors/sum(likelihoods*priors)
 posteriors[1]
 ```
+
+So the posterior for species A is `r round(posteriors[1], 2)`.

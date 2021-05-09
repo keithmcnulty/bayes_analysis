@@ -310,17 +310,18 @@ ggplot() +
 </div>
 <div id="h4" class="section level3">
 <h3>2H4</h3>
-<p>In the first case where we have no information about births, the prior probability is 0.5. We know that the probability the test is positive for species A given species A is 0.8, and we know that the average probability the test is positive for species A is <span class="math inline">\(0.8 \times 0.5 + 0.35 \times 0.5 = 0.575\)</span>.</p>
+<p>The prior probability of Species A is 0.5. We know that the probability the test is positive for species A given species A is 0.8, and we know that the average probability the test is positive for species A is <span class="math inline">\(0.8 \times 0.5 + 0.35 \times 0.5 = 0.575\)</span>.</p>
 <p><span class="math display">\[
 \mathrm{Pr}(A \mid +A) = \frac{\mathrm{Pr} (+A \mid A)\mathrm{Pr} (A)}{\mathrm{Pr}(+A)}
 \]</span></p>
-<p>Therefore the posterior probability is <span class="math inline">\((0.8 \times 0.5)/0.575 = 0.7\)</span>.</p>
-<p>In the second case for species A we have a probability of a twin followed by a singleton of <span class="math inline">\(0.09\)</span>. For species B it is <span class="math inline">\(0.16\)</span>. So we have:</p>
+<p>Therefore the posterior probability of Species A is <span class="math inline">\((0.8 \times 0.5)/0.575 = 0.7\)</span>.</p>
+<p>Now we have a probability of Species A of 0.7, and therefore a probability of Species B of 0.3. Given the additional data on births, for species A we have a probability of a twin followed by a singleton of <span class="math inline">\(0.09\)</span>. For species B it is <span class="math inline">\(0.16\)</span>. So we have:</p>
 <pre class="r"><code>priors &lt;- c(0.7, 0.3)
 likelihoods &lt;- c(0.09, 0.16)
 posteriors &lt;- likelihoods*priors/sum(likelihoods*priors)
 posteriors[1]</code></pre>
 <pre><code>## [1] 0.5675676</code></pre>
+<p>So the posterior for species A is 0.57.</p>
 </div>
 </div>
 
