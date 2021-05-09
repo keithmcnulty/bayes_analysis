@@ -88,7 +88,7 @@ There are now five ways in which the card we are looking at can be black.  Four 
 
 ### 2M6
 
-There are four ways that the card we are looking at can be black.  One card has two black sides and the other two have white on the other side.  Therefore in two of the four cases the other side is black, giving a probablity of $0.5$.
+There are four ways that the card we are looking at can be black.  One card has two black sides and the other two have white on the other side.  Therefore in two of the four cases the other side is black, giving a probability of $0.5$.
 
 ### 2M7
 
