@@ -1,5 +1,5 @@
 ---
-title: "Global Water Simulation"
+title: "Introduction to Bayesian Modeling"
 author: "Keith McNulty"
 output: 
   html_document:
@@ -184,13 +184,58 @@ gridExtra::grid.arrange(p1, p2, p3, p4,
 
 By our 16th iteration, it seems that our most likely value for the proportion of water on the Earth's surface area is around 70%, which it turns out is a pretty accurate estimate.
 
-## Approximation methods
+## Bayes Theorem
 
-### Grid approximation
+Bayes Theorem is very simply derived and gives rise to the theoretical concept of a prior and posterior probability.  Imagine we have two events $A$ and $B$.  The we can say that the probability of both $A$ and $B$ occurring is the the probability of $A$ occurring given that $B$ occurs AND $B$ occurring. Therefore:
+
+$$
+\mathrm{Pr}(A \cap B) = \mathrm{Pr}(A \mid B)\mathrm{Pr}(B)
+$$
+
+But using the same logic we can also say:
+
+$$
+\mathrm{Pr}(A \cap B) = \mathrm{Pr}(B \mid A)\mathrm{Pr}(A)
+$$
+
+So we can conclude that:
+
+$$
+\mathrm{Pr}(A \mid B)\mathrm{Pr}(B) = \mathrm{Pr}(B \mid A)\mathrm{Pr}(A)
+$$
+
+or otherwise stated as *Bayes Theorem*:
+
+$$
+\mathrm{Pr}(A \mid B) = \frac{\mathrm{Pr}(B \mid A)\mathrm{Pr}(A)}{\mathrm{Pr}(B)}
+$$
+If we apply this to our globe example, it translates to:
+
+$$
+\mathrm{Pr}(p \mid W, L) = \frac{\mathrm{Pr}(W, L \mid p)\mathrm{Pr}(p)}{\mathrm{Pr}(W, L)}
+$$
+Note that 
+
+* $\mathrm{Pr}(p \mid W, L)$ is the probability for the proportion of water given our sample data, so it is our posterior.  
+* $\mathrm{Pr}(p)$ is the original probability for the proportion of water that we started out with, so it is our prior.
+* $\mathrm{Pr}(W, L \mid p)$ is the likelihood of seeing our sample data given $p$, while $\mathrm{Pr}(W, L)$ is the overall (or average) likelihood of seeing our sample data.  So the ratio of the two represents a likelihood function which sums to 1 over all values of $p$.
+
+Therefore we can say that:
+
+$$
+\mathrm{Posterior} = \mathrm{Likelihood} \times \mathrm{Prior} 
+$$
+Intuitively, our probability updates from the prior in view of the new information we get from our sample.  
+
+## Approximation methods
 
 Estimating a posterior distribution from a prior distribution can be complicated when you have infinitely many probabilities in a continuous distribution.  Of course, if you choose your prior to be some sort of easily manipulated formula-defined distribution, like a uniform or binomial distribution, things might be easier.  But that constrains us a great deal.  
 
-Instead, we can work with any prior distribution of we approximate it using a grid of values in the distribution.  This is known as *grid approximation*.  Using our example above, let's write a function to approximate a posterior for our 16th iteration based on a prior and a number of grid points:
+There are three common methods for approximating a posterior: grid approximation, quadratic approximation and Markov Chain Monte Carlo (MCMC) method.  Grid approximation, though simple and easily understandable, is computationally overwhelming for all except the simplest cases, and so is unusual in modern day settings.  We quickly review all three and show an example.
+
+### Grid approximation
+
+We can work with any prior distribution if we approximate it using a grid (finite or limited subset) of values in the distribution.  This is known as *grid approximation*.  Using our example above, let's write a function to approximate a posterior for our 16th iteration based on a prior and a number of grid points:
 
 ```{r}
 # calculate likelihood of observation
@@ -373,6 +418,109 @@ ggplot() +
   theme_minimal()
 ```
 
-### Quadratic approximation
+### Quadratic (Laplace) approximation
+
+We can expect in general that the area near the peak of our posterior density curve will have a shape resembling a normal distribution.  You'll have noticed this in all of our charts above.  Since we know that normal distributions can be characterized by their center (mean) and spread (standard deviation/variance), this allows us a route to approxmation of our posterior.  
+
+We know that the logarithm of the normal distribution takes a quadratic form (a parabola), so whenever we expect a log-posterior to be parabolic, we can approximate it with a quadratic function.  This is called *quadratic approximation*.
+
+Here's an example using the `rethinking` package of how to use a quadratic approximation to estimate our posterior distribution for our global water example assuming a uniform prior.
+
+```{r, message = FALSE, warning = FALSE}
+library(rethinking)
+
+# perform a quadratic approximation of posterior based on a likelihood and a prior
+globalwater.qa <- quap(
+  alist(
+    # formulas for likelihood and prior 
+    W ~ dbinom(W + L, p),
+    p ~ dunif(0, 1)
+  ),
+  # actual data
+  data = list(W = 11, L = 5)
+)
+
+# display summary of the approximation
+(precis_water <- precis(globalwater.qa))
+```
+
+We can see the approximation suggests a mean of `r round(precis_water$mean, 2)` and a standard deviation of `r round(precis_water$sd, 2)`.  Let's plot it (blue line) alongside a precise curve for our posterior (red dashed line).
+
+```{r}
+ggplot() +
+  xlim(0, 1) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Density") + 
+  theme_minimal() +
+  geom_function(fun = function (p) dbeta(p, 12, 6),  color = "red", linetype = "dashed") +
+  geom_function(fun = function (p) dnorm(p, mean = precis_water$mean, sd = precis_water$sd),  color = "blue")
+
+
+```
+
+With larger amounts of data - but the same sample proportions - we can achieve even more precise approximations of our posterior.  For example, Let's assume we had a sample of 110 water observations and 50 land obervations.
+
+```{r}
+globalwater.qa110 <- quap(
+  alist(
+    W ~ dbinom(W + L, p),
+    p ~ dunif(0, 1)
+  ),
+  data = list(W = 110, L = 50)
+)
+
+precis_water110 <- precis(globalwater.qa110)
+
+ggplot() +
+  xlim(0, 1) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Density") + 
+  theme_minimal() +
+  geom_function(fun = function (p) dbeta(p, 111, 51),  color = "red", linetype = "dashed") +
+  geom_function(fun = function (p) dnorm(p, mean = precis_water110$mean, sd = precis_water110$sd),  color = "blue")
+```
+
+This method is very similar to Maximum Likelihood Estimation - a common procedure in fitting standard regression models.  It is not perfect and -- depending on the sample -- it can poorly estimate the posterior even with a large amount of data.  It can also fail if it cannot compute the Hessian (which is required to estimate the standard deviation of the normal distribution).   
 
 ### Markov Chain Monte Carlo
+
+This approximation method is not intuitive but often works and can handle high complexity posteriors.  It estimates the posterior by simply calculating the probabilities over a set of random datapoints, and the using the frequency distribution of the results. Here's an example of how we can use this approach to approximate our global water posterior, using 100,000 samples:
+
+```{r}
+# use 100,000 samples
+n_samples <- 100000
+
+# start a posterior probability vector
+p <- c()
+
+W <- 11
+L <- 5
+
+p[1] <- 0.5
+
+for (i in 2:n_samples) {
+  # random deviation from previous
+  p_new <- rnorm(1, p[i-1], 0.1)
+  # take care of outliers
+  if (p_new < 0) p_new <- abs(p_new)
+  if (p_new > 1) p_new <- 2 - p_new
+  # construct likelihood
+  q0 <- dbinom(W, W + L, p[i - 1])
+  q1 <- dbinom(W, W+L, p_new)
+  p[i] <- ifelse(runif(1) < q1/q0, p_new, p[i - 1])
+}
+```
+
+Now we can plot our estimated density function for our posterior (blue) against the real posterior distribution (red dashed):
+
+```{r}
+ggplot() +
+  xlim(0, 1) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Density") + 
+  theme_minimal() +
+  geom_density(aes(x = p), color = "blue") +
+  geom_function(fun = function (p) dbeta(p, 11, 5),  color = "red", linetype = "dashed")
+  
+
+```

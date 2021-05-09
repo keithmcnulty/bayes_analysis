@@ -1,0 +1,146 @@
+---
+title: "Chapter 2 Exercises"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align = "center", message = TRUE, warning = TRUE)
+```
+
+## 'Easy' exercises
+
+* **2E1**: The probability of rain on Monday is $\mathrm{Pr}(\mathrm{rain} \mid \mathrm{Monday})$, but is alternatively expressed as $\frac{\mathrm{Pr}(\mathrm{rain}, \mathrm{Monday})}{\mathrm{Pr}(\mathrm{Monday})}$
+* **2E2**: $\mathrm{Pr}(\mathrm{Monday} \mid \mathrm{rain})$ means 'the probability it is Monday given that it is raining'
+* **2E3**: Statement 1 is the direct representation.  Statement 4 is equivalent via Bayes Theorem.
+* **2E4**: Probabilility is a mathematical way of expressing the likelihood of an event or events occurring given that there is usually uncertainty involved in these events.  However the proportion of water on the Earth's surface is not an event - it is a real and known fact which exists and is (fairly) permanent and certain.  Therefore the statement 'the probability of water is 0.7' refers to a simulated experiment involving a globe toss, and not the actual measurement of water on the Earth's surface.  That said, such simulated experiments can be useful in estimating or approximating a quantity or measure which is as yet unknown or unmeasurable.    
+
+## 'Medium' exercises
+
+### 2M1
+
+```{r}
+library(ggplot2)
+library(latex2exp)
+
+get_posterior <- function(n = 20, W = 3, L = 0, p_grid = seq(0, 1, length.out = n), priors = rep(1, n), ...) {
+  prior <- priors
+  likelihood <- dbinom(W, W + L, prob = p_grid)
+  # calculate posterior
+  data.frame(
+    p_grid = p_grid,
+    posterior = (likelihood * prior)/sum(likelihood * prior)
+  )
+}
+
+
+ggplot() +
+  xlim(0, 1) +
+  ylim(0, 0.2) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Likelihood") + 
+  theme_minimal() +
+  geom_line(aes(x = get_posterior()$p_grid, y = get_posterior()$posterior), color = "red") +
+  geom_line(aes(x = get_posterior(W = 3, L = 1)$p_grid, y = get_posterior(W = 3, L = 1)$posterior), color = "blue") +
+  geom_line(aes(x = get_posterior(W = 5, L = 2)$p_grid, y = get_posterior(W = 5, L = 2)$posterior), color = "black")
+
+
+
+```
+
+### 2M2
+
+```{r}
+step_prior <- function(x) ifelse(x < 0.5, 0, 1)
+
+ggplot() +
+  xlim(0, 1) +
+  ylim(0, 0.2) +
+  xlab(TeX(r'($p$)')) +
+  ylab("Likelihood") + 
+  theme_minimal() +
+  geom_line(aes(x = get_posterior(priors = step_prior(seq(0, 1, length.out = 20)))$p_grid, y = get_posterior(priors = step_prior(seq(0, 1, length.out = 20)))$posterior), color = "red") +
+  geom_line(aes(x = get_posterior(W = 3, L = 1, priors = step_prior(seq(0, 1, length.out = 20)))$p_grid, y = get_posterior(W = 3, L = 1, priors = step_prior(seq(0, 1, length.out = 20)))$posterior), color = "blue") +
+  geom_line(aes(x = get_posterior(W = 5, L = 2, priors = step_prior(seq(0, 1, length.out = 20)))$p_grid, y = get_posterior(W = 5, L = 2, priors = step_prior(seq(0, 1, length.out = 20)))$posterior), color = "black")
+
+```
+
+### 2M3
+
+Using Bayes Theorem:
+
+$$
+\begin{align*}
+\mathrm{Pr}(\mathrm{Earth} \mid \mathrm{land}) &= \frac{\mathrm{Pr}(\mathrm{land} \mid \mathrm{Earth})\mathrm{Pr}(\mathrm{Earth})}{\mathrm{Pr}(\mathrm{land})} \\
+&=\frac{0.3 \times 0.5}{0.5 \times 1 + 0.5 \times 0.3} \\
+&= \frac{0.15}{0.65} \\
+&= 0.23 
+\end{align*}
+$$
+
+### 2M4
+
+There are three total ways the card we are looking at can be black -- both sides of the first card and one side of the second card.  Of these three, a black card would only be on the other side in two cases.  Therefore the probability is $2/3$.
+
+### 2M5
+
+There are now five ways in which the card we are looking at can be black.  Four of these ways result in black on the other side, so the probability is $4/5$.
+
+### 2M6
+
+There are four ways that the card we are looking at can be black.  One card has two black sides and the other two have white on the other side.  Therefore in two of the four cases the other side is black, giving a probablity of $0.5$.
+
+### 2M7
+
+In the case where both cards have the same sides, there are four possible permutations of events.  In the case where the black card has the same sides, but the white card is black on the other side, there are a further two permutations,  and in the case where the black card has white on the other side and and the white card has the same sides there are a further two permutations.  So there are 8 possibilities in total, and six will result in the first card being black on the other side, meaning a probability of $0.75$.
+
+## 'Hard' exercises
+
+### 2H1
+
+Construct a tree with one Species A and one Species B.  From Species A, ten further branches, one with twins and nine singletons, and from the twins branch one with twins and nine singletons.  From Species B, two branches with twins and eight with singletons, and from the two twins, again two with twins and eight with singletons.  Therefore out of thirty possible paths from the first twins birth, 5 involve twins.  This gives a $1/6$ probability of twins in the next birth.
+
+### 2H2
+
+Using Bayes Theorem:
+
+$$
+\begin{align*}
+\mathrm{Pr}(A \mid \mathrm{twins}) &= \frac{\mathrm{Pr}(\mathrm{twins} \mid A)\mathrm{Pr}(A)}{\mathrm{Pr}(\mathrm{twins})} \\
+&= \frac{0.1 \times 0.5}{0.1 \times 0.5 + 0.2 \times 0.5} \\
+&= \frac{0.05}{0.15} \\
+&= \frac{1}{3}
+\end{align*}
+$$
+
+### 2H3
+
+The prior probability is $1/3$ from the previous question.  We need to compute the likelihood of singletons in in a second birth from Species A, which is $9/10$, and we also need to compute the average likelihood of singletons in a second birth given twins in a first birth.  We know that the average likelihood of twins from a second birth given twins in a first birth is $1/6$ - therefore the average likelihood of singletons in a second birth given twins in a first birth is $5/6$. Using all this:
+
+$$
+\begin{align*}
+\mathrm{Posterior} &= \frac{\mathrm{Pr}(\mathrm{Singleton2} \mid A_{\mathrm{twins}})\mathrm{Pr}(A_{\mathrm{twins}})}{\mathrm{Pr}(\mathrm{Singleton2})} \\
+&= \frac{0.9 \times 0.33}{0.83} \\
+&= 0.36
+\end{align*}
+$$
+This seems intuitively correct, since species A is slightly more likely to have singletons, you'd expect the posterior to be slightly increased from the prior.
+
+### 2H4
+
+In the first case where we have no information about births, the prior probability is 0.5.  We know that the probability the test is positive for species A given species A is 0.8, and we know that the average probability the test is positive for species A is $0.8 \times 0.5 + 0.35 \times 0.5 = 0.575$.  
+
+$$
+\mathrm{Pr}(A \mid +A) = \frac{\mathrm{Pr} (+A \mid A)\mathrm{Pr} (A)}{\mathrm{Pr}(+A)}
+$$
+
+Therefore the posterior probability is $(0.8 \times 0.5)/0.575 = 0.7$.  
+
+In the second case for species A we have a probability of a twin followed by a singleton of $0.09$.  For species B it is $0.16$.  So we have:
+
+```{r}
+priors <- c(0.7, 0.3)
+likelihoods <- c(0.09, 0.16)
+posteriors <- likelihoods*priors/sum(likelihoods*priors)
+posteriors[1]
+```
