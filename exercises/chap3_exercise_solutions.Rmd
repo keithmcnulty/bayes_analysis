@@ -1,0 +1,367 @@
+---
+title: "Chapter 3 Exercise Solutions"
+author: "Keith McNulty"
+date: "15/05/2021"
+output: html_document
+---
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(rethinking)
+set.seed(100)
+
+# function to grid approximate posterior of globe tossing example
+globe_posterior_grid <- function(water = 6, all = 9, n = 1000, grid.size = 1e4, priorfn = function(x) 1) {
+  p_grid <- seq(from = 0, to = 1, length.out = n)
+  prior = priorfn(p_grid)
+  likelihood <- dbinom(water, size = all, prob = p_grid) #binomial likelihood
+  posterior <- likelihood * prior
+  posterior <- posterior/sum(posterior)
+  samples <- sample(p_grid, prob = posterior, size = grid.size, replace = TRUE)
+}
+
+samples <- globe_posterior_grid()
+
+```
+
+## 'Easy' exercises
+
+### 3E1
+
+```{r}
+mean(samples < 0.2)
+```
+
+### 3E2
+
+```{r}
+mean(samples > 0.8)
+```
+
+### 3E3
+
+```{r}
+sum(samples > 0.2 & samples < 0.8)/sum(samples <= 1)
+
+```
+
+### 3E4
+
+```{r}
+quantile(samples, 0.2)
+```
+
+### 3E5
+
+```{r}
+quantile(samples, 0.8)
+```
+
+### 3E6
+
+```{r}
+rethinking::HPDI(samples, prob = 0.66)
+```
+
+### 3E7
+
+```{r}
+rethinking::PI(samples, prob = 0.66)
+```
+
+## 'Medium' Exercises
+
+### 3M1
+
+```{r}
+samples_new <- globe_posterior_grid(water = 8, all = 15)
+```
+
+### 3M2
+
+```{r}
+rethinking::HPDI(samples_new, prob = 0.9)
+```
+
+### 3M3
+
+```{r}
+posterior_check1 <- rbinom(1e4, size = 15, prob = samples)
+mean(posterior_check1 == 8)
+```
+
+### 3M4
+
+```{r}
+posterior_check2 <- rbinom(1e4, size = 9, prob = samples)
+mean(posterior_check2 == 6)
+```
+
+### 3M5
+
+```{r}
+samples_newprior <- globe_posterior_grid(prior = function(x) ifelse(x < 0.5, 0, 1))
+
+# this removes all probability that p < 0.5
+rethinking::HPDI(samples_newprior, prob = 0.9)
+
+# zero probability that p < 0.2, consistent with new prior
+sum(samples_newprior < 0.2)/sum(samples_newprior <= 1)
+
+# 6 from 9 case - new prior narrows range of likely values for p
+sum(samples_newprior < 0.8)/sum(samples_newprior <= 1)
+sum(samples_newprior > 0.2 & samples_newprior < 0.8)/sum(samples_newprior <= 1)
+quantile(samples_newprior, 0.2)
+quantile(samples_newprior, 0.8)
+rethinking::HPDI(samples_newprior, prob = 0.66)
+rethinking::PI(samples_newprior, prob = 0.66)
+```
+
+It appears that the prior aids in narrowing the likelihood range for the true value of p and ensures that the known impossibility range has zero likelihood ($p < 0.5$).
+
+```{r}
+samples_new_newprior <- globe_posterior_grid(water = 8, all = 15, prior = function(x) ifelse(x < 0.5, 0, 1))
+
+rethinking::HPDI(samples_new_newprior, prob = 0.9)
+
+posterior_check1_newprior <- rbinom(1e4, size = 15, prob = samples_new_newprior)
+sum(posterior_check1_newprior == 8)/sum(posterior_check1_newprior <= 15)
+
+posterior_check2_newprior <- rbinom(1e4, size = 9, prob = samples_new_newprior)
+sum(posterior_check2_newprior == 6)/sum(posterior_check2_newprior <= 9)
+
+```
+
+Again we see a narrowing of the likelihood range, and because both possibilities (8/15 and 6/8) are p > 0.5, we see increases in their likelihood because our new prior has provided additional information.
+
+# 3M6
+
+I am extending this question to test the effect of different levels of prior knowledge on posterior certainty.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# write function to sample based on an observation
+
+single_obs <- function(globe_tosses, priorfn = function(x) {1}, intprob = 0.99) {
+  # get an observation based on real globe
+  obs <- rbinom(1, globe_tosses, prob = 0.71)
+  
+  # calculate posterior
+  p_grid <- seq(from = 0, to = 1, length.out = 1000)
+  prior <- priorfn(p_grid)
+  likelihood <- dbinom(obs, size = globe_tosses, prob = p_grid)
+  posterior <- likelihood * prior
+  posterior <- posterior / sum(posterior)
+  
+  # generate sample and calculate interval size
+  sample <- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE)
+  interval <- rethinking::PI(sample, prob = intprob)
+  interval[2] - interval[1]
+}
+
+# run this an arbitrary number of times and produce a dataframe row
+run_sim <- function(globe_tosses, priorfn = function(x) {1}, times = 100, intprob = 0.99) {
+  simdata <- data.frame()
+  for (i in 1:times) {
+    simdata[1,i] <- single_obs(globe_tosses, priorfn, intprob)
+  }
+  colnames(simdata) <- paste0("sim", 1:times)
+  simdata
+}
+
+# create a set of globe_tosses values in a dataframe
+toss_data <- data.frame(
+  tosses = seq(100, 3000, by = 100)
+)
+
+# 99% certainty
+# mutate observation data for uniform prior and calculate average interval width
+toss_data_uniform <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses),
+                ave_int_unif = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_unif)
+
+# mutate observation data for step1 prior and calculate average interval width
+toss_data_step1 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x < 0.5, 0, 1)),
+                ave_int_step1 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step1)
+
+# mutate observation data for step2 prior and calculate average interval width
+toss_data_step2 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x > 0.65 & x < 0.75, 1, 0)),
+                ave_int_step2 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step2)
+
+# graph curves 
+
+plot99_unif <- ggplot(data = toss_data_uniform,
+                    aes(x = tosses, y = ave_int_unif)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(y = "99% Confidence Precision",
+       title = "No prior knowledge") + 
+  theme_minimal() +
+  theme(axis.title.y = element_text(size = 6),
+        axis.title.x = element_blank(),
+        title = element_text(size = 10))
+
+plot99_step1 <- ggplot(data = toss_data_step1,
+                    aes(x = tosses, y = ave_int_step1)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(title = "Some prior knowledge") + 
+  theme_minimal() +
+  theme(title = element_text(size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+plot99_step2 <- ggplot(data = toss_data_step2,
+                    aes(x = tosses, y = ave_int_step2)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(title = "Lot of prior knowledge") + 
+  theme_minimal() +
+  theme(title = element_text(size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+# 90% certainty
+# mutate observation data for uniform prior and calculate average interval width
+toss_data_uniform <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, intprob = 0.9),
+                ave_int_unif = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_unif)
+
+# mutate observation data for step1 prior and calculate average interval width
+toss_data_step1 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x < 0.5, 0, 1), intprob = 0.9),
+                ave_int_step1 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step1)
+
+# mutate observation data for step2 prior and calculate average interval width
+toss_data_step2 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x > 0.65 & x < 0.75, 1, 0), intprob = 0.9),
+                ave_int_step2 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step2)
+
+# graph curves 
+
+plot90_unif <- ggplot(data = toss_data_uniform,
+                    aes(x = tosses, y = ave_int_unif)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(y = "90% Confidence Precision") + 
+  theme_minimal() +
+  theme(title = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 6))
+
+plot90_step1 <- ggplot(data = toss_data_step1,
+                    aes(x = tosses, y = ave_int_step1)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  theme(title = element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+plot90_step2 <- ggplot(data = toss_data_step2,
+                    aes(x = tosses, y = ave_int_step2)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  theme(title = element_blank(),
+      axis.title.x = element_blank(),
+      axis.title.y = element_blank())
+
+# 80% certainty
+# mutate observation data for uniform prior and calculate average interval width
+toss_data_uniform <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, intprob = 0.8),
+                ave_int_unif = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_unif)
+
+# mutate observation data for step1 prior and calculate average interval width
+toss_data_step1 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x < 0.5, 0, 1), intprob = 0.8),
+                ave_int_step1 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step1)
+
+# mutate observation data for step2 prior and calculate average interval width
+toss_data_step2 <- toss_data %>% 
+  dplyr::rowwise() %>% 
+  dplyr::mutate(run_sim(tosses, priorfn = function(x) ifelse(x > 0.65 & x < 0.75, 1, 0), intprob = 0.8),
+                ave_int_step2 = mean(c_across(starts_with("sim")))) %>% 
+  dplyr::select(tosses, ave_int_step2)
+
+# graph curves 
+
+plot80_unif <- ggplot(data = toss_data_uniform,
+                    aes(x = tosses, y = ave_int_unif)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(x = "Number of globe tosses",
+       y = "80% Confidence Precision") + 
+  theme_minimal() +
+  theme(title = element_blank(),
+        axis.title.x = element_text(size = 6),
+        axis.title.y = element_text(size = 6))
+
+plot80_step1 <- ggplot(data = toss_data_step1,
+                    aes(x = tosses, y = ave_int_step1)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(x = "Number of globe tosses") + 
+  theme_minimal() +
+  theme(title = element_blank(),
+        axis.title.x = element_text(size = 6),
+        axis.title.y = element_blank())
+
+plot80_step2 <- ggplot(data = toss_data_step2,
+                    aes(x = tosses, y = ave_int_step2)) +
+  xlim(0, 3000) +
+  ylim(0, 0.3) +
+  geom_line(color = "blue") + 
+  geom_hline(yintercept = 0.05, color = "red", linetype = "dashed") +
+  labs(x = "Number of globe tosses") + 
+  theme_minimal() +
+  theme(title = element_blank(),
+      axis.title.x = element_text(size = 6),
+      axis.title.y = element_blank())
+  
+
+plot <- gridExtra::grid.arrange(plot99_unif, plot99_step1, plot99_step2, 
+                                plot90_unif, plot90_step1, plot90_step2,
+                                plot80_unif, plot80_step1, plot80_step2,
+                                nrow = 3, ncol = 3)
+```
