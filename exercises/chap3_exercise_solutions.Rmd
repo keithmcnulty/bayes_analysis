@@ -1,7 +1,6 @@
 ---
 title: "Chapter 3 Exercise Solutions"
 author: "Keith McNulty"
-date: "15/05/2021"
 output: html_document
 ---
 
