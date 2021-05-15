@@ -364,3 +364,99 @@ plot <- gridExtra::grid.arrange(plot99_unif, plot99_step1, plot99_step2,
                                 plot80_unif, plot80_step1, plot80_step2,
                                 nrow = 3, ncol = 3)
 ```
+
+We note that the prior has minimal effect on the number of observations needed except when we demand a lower level of certainty.
+
+## 'Hard' Exercises
+
+```{r}
+data(homeworkch3)
+```
+
+### 3H1
+
+```{r}
+birth_boys <- sum(birth1 == 1) + sum(birth2 == 1)
+births <- length(birth1) + length(birth2)
+
+p_grid <- seq(from = 0, to = 1, length.out = 1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(birth_boys, size = births, prob = p_grid)
+posterior <- likelihood*prior/sum(likelihood*prior)
+p_grid[which.max(posterior)]
+```
+
+### 3H2
+
+```{r}
+samples <- sample(p_grid, size = 1e4, prob = posterior, replace = TRUE)
+
+intervals <- c(0.5, 0.89, 0.97)
+
+rethinking::HPDI(samples, prob = intervals)
+```
+
+### 3H3
+
+```{r}
+sim <- rbinom(1e4, 200, prob = samples)
+
+ggplot() +
+  geom_density(aes(x = sim), color = "blue") +
+  geom_vline(xintercept = birth_boys, color = "red", linetype = "dashed") +
+  theme_minimal()
+```
+
+### 3H4
+
+```{r}
+sim2 <- rbinom(1e4, 100, prob = samples)
+
+ggplot() +
+  geom_density(aes(x = sim2), color = "blue") +
+  geom_vline(xintercept = sum(birth1), color = "red", linetype = "dashed") +
+  theme_minimal()
+
+```
+The model overestimates the likely proportion of first born boys.
+
+### 3H5
+
+```{r}
+# first born girls
+girls_first <- length(birth1) - sum(birth1) 
+
+# simulate second born boys based on first born girls
+sim_boys_girlsfirst <- rbinom(1e4, girls_first, prob = samples)
+
+# actual second born boys following first born girls
+boys_second <- sum(birth2[which(birth1 == 0)])
+
+ggplot() +
+  geom_density(aes(x = sim_boys_girlsfirst), color = "blue") +
+  geom_vline(xintercept = boys_second, color = "red", linetype = "dashed") +
+  theme_minimal()
+
+
+```
+
+The model expects a smaller number of boys as second borns after girls compared to the actual number, which implies that second births may not be independent of first births.
+
+```{r}
+# first born boys
+boys_first <- sum(birth1) 
+
+# simulate second born boys based on first born boys
+sim_boys_boysfirst <- rbinom(1e4, boys_first, prob = samples)
+
+# actual second born boys following first born boys
+boys_second <- sum(birth2[which(birth1 == 1)])
+
+ggplot() +
+  geom_density(aes(x = sim_boys_boysfirst), color = "blue") +
+  geom_vline(xintercept = boys_second, color = "red", linetype = "dashed") +
+  theme_minimal()
+
+```
+
+It seems that the gender of the first birth has an influence on the gender of the second birth.  So we have tried to apply a model based on a sample of 200 independent births to a situation where the births are not actually independent.  
