@@ -1,0 +1,47 @@
+---
+title: "Normal Distributions"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Random additive processes follow a normal distribution but random mutiplicative process form an exponential distribution type, which trasnlates to a log-normal distribution:
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+```{r, warning = FALSE, message = FALSE}
+# sum of eight random numbers 0-10 10k times
+add <- replicate(10000, sum(runif(8, 0, 10)))
+
+# product of eight random numbers 1-2 10k times
+mult <- replicate(10000, prod(1 + runif(8, 0, 1)))
+
+g1 <- ggplot() +
+  geom_histogram(aes(add), color = "darkblue", fill = "pink") +
+  theme_minimal() +
+  labs(x = "Sum", y = "Count", title = "Additive process")
+
+g2 <- ggplot() +
+  geom_histogram(aes(mult), color = "darkblue", fill = "pink") +
+  theme_minimal() +
+  labs(x = "Product", y = "Count", title = "Multiplicative process")
+
+g3 <- ggplot() +
+  geom_histogram(aes(log(mult)), color = "darkblue", fill = "pink") +
+  theme_minimal() +
+  labs(x = "Log(Product)", y = "Count", title = "Logarithm of a Multiplicative process")
+
+gridExtra::grid.arrange(g1, g2, g3, ncol = 1)
+
+
+```
+
+
+
+

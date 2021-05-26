@@ -1,0 +1,806 @@
+---
+title: "Chapter 5 Exercise Solutions"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+```
+
+## 'Easy' exercises
+
+### 4E1
+
+The likelihood is 
+
+$$
+y_i \sim \mathcal{N}(\mu, \sigma)
+$$
+
+### 4E2
+
+Two parameters are in the posterior distribution:  $\mu$ and $\sigma$.
+
+### 4E3
+
+$$
+\mathrm{P}(\mu, \sigma \mid y) = \frac{\prod_i\mathcal{N}(y_i \mid \mu, \sigma )\mathcal{N}(\mu \mid 0, 10)\mathrm{Exp}(\sigma \mid 1)}{\int\int\prod_i\mathcal{N}(y_i \mid \mu, \sigma )\mathcal{N}(\mu \mid 0, 10)\mathrm{Exp}(\sigma \mid 1) d\mu d\sigma}
+$$
+
+### 4E4
+
+The linear model is $\mu_i = \alpha + \beta x_i$.
+
+### 4E5
+
+Three parameters: $\alpha$, $\beta$ and $\sigma$.  $\mu$ is now determined by $\alpha$ and $\beta$.
+
+## 'Medium' Exercises
+
+### 4M1
+```{r}
+library(tidyverse)
+
+sim <- data.frame(
+  mu = rnorm(1e4, mean = 0, sd = 10),
+sigma = rexp(1e4, rate = 1)
+) %>% 
+  dplyr::mutate(y = rnorm(1e4, mean = mu, sd = sigma))
+
+ggplot(data = sim) +
+  geom_density(aes(x = y)) +
+  theme_minimal()
+```
+
+### 4M2
+
+```{r}
+flist <- alist(
+  y ~ dnorm(mu, sigma),
+  mu ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+```
+
+### 4M3
+
+$$
+y \sim \mathcal{N}(\mu, \sigma) \\
+\mu = \alpha + \beta x \\
+\alpha \sim \mathcal{N}(0, 10) \\
+\beta \sim \mathcal{U}(0, 1) \\
+\sigma \sim \mathrm{Exp}(1)
+$$
+
+### 4M4
+
+We choose $\alpha$ to be a reasonable distribution for adults, and $\beta$ to be a reasonable distibution of slope centered on zero, because we have no reason to believe right now that height is related to year.
+
+$$
+h_i \sim \mathcal{N}(\mu_i, \sigma) \\
+\mu_i = \alpha + \beta(x_i - \bar{x}) \\
+\alpha \sim \mathcal{N}(170, 20) \\
+\beta \sim \mathcal{N}(0, 1) \\
+\sigma \sim \mathrm{Exp}(1)
+$$
+ 
+### 4M5
+
+If every student got taller each year, then the mean height would get taller each year, which means that $\beta$ would have some positive slope.  So we would adjust $\beta$ to be centered on a number greater than zero.
+
+### 4M6 
+
+If the variance is less than 64 then the standard deviation is less than 8.  Let's take a look at the current distribution for $sigma$.
+
+```{r}
+ggplot() +
+  xlim(0, 15) +
+  geom_function(fun = function(x) dexp(x, rate = 1)) +
+  theme_minimal()
+``` 
+
+OK, so this seems to discount any $\sigma$ > 4.  We might want to adjust our rate a bit:
+ 
+
+```{r}
+ggplot() +
+xlim(0, 15) +
+geom_function(fun = function(x) dexp(x, rate = 0.5)) +
+theme_minimal()
+```
+That seems a bit better, so would probably change my rate in the exponential distribution to $0.5$.
+
+### 4M7
+
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+
+d2 <- d %>% 
+  dplyr::filter(age >= 18)
+
+# mean of x
+meanweight <- mean(d2$weight)
+
+new_mod <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*(weight - meanweight),
+  a ~ dnorm(178, 20),
+  b ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.3 <- quap(new_mod, data = d2)
+
+
+# without mean of x
+new_mod_nomean <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*weight,
+  a ~ dnorm(178, 20),
+  b ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.3_nomean <- quap(new_mod_nomean, data = d2)
+
+# compare covariances
+vcov(m4.3)
+vcov(m4.3_nomean)
+```
+
+Centering around the mean has almost eliminated the covariances.  Let's compare posterior models:
+
+```{r}
+# plot centered
+post <- extract.samples(m4.3, n = 1e4)
+mean_a <- mean(post$a)
+mean_b <- mean(post$b)
+
+weight.seq <- seq(from = 25, to = 70, by = 1)
+mu <- link(m4.3, data = data.frame(weight = weight.seq))
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+
+
+plot(height ~ weight, data = d2, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+```
+
+```{r}
+# plot uncentered
+post <- extract.samples(m4.3_nomean, n = 1e4)
+mean_a <- mean(post$a)
+mean_b <- mean(post$b)
+
+weight.seq <- seq(from = 25, to = 70, by = 1)
+mu <- link(m4.3_nomean, data = data.frame(weight = weight.seq))
+
+plot(height ~ weight, data = d2, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+```
+
+The posteriors are pretty much identical whether weight-centered or not.
+
+## 4M8
+
+```{r}
+library(splines)
+
+# get cherry_blossom data
+data("cherry_blossoms")
+d <- cherry_blossoms
+
+# create a function to produce the cherry blossom spline
+
+cherry_spline <- function(df, num_knots, weight_sd) {
+  d2 <- df[complete.cases(df$doy), ]
+  
+  knot_list <- quantile(d2$year, probs = seq(0, 1, length.out = num_knots))
+  
+  B <- bs(d2$year,
+        # get rid of the ends
+        knots = knot_list[-c(1, num_knots)],
+        degree = 3,
+        intercept = TRUE)
+  
+  flist <- alist(
+  D ~ dnorm(mu, sigma),
+  mu <- a + B %*% w,
+  a ~ dnorm(100, 10),
+  w ~ dnorm(0, sd),
+  sigma ~ dexp(1)
+  )
+  
+  m4.8 <- quap(
+    flist, data = list(D = d2$doy, B = B, sd = weight_sd), start = list(w = rep(0, ncol(B)))
+  ) 
+  
+  mu <- link(m4.8)
+  mu_PI <- apply(mu, 2, PI, 0.97)
+  muPI <- as.data.frame(t(mu_PI))
+  data <- cbind(d2[ ,c("year", "doy")], muPI)
+  
+  ggplot(data = data, aes(x = year, y = doy)) +
+  geom_point(color = "pink", size = 1) +
+  geom_ribbon(aes(ymin = `2%`, ymax = `98%`), fill = "lightblue", alpha = 0.5) + 
+  theme_classic() +
+  labs(x = "Year", y = "Day of First Bloom", title = paste("Knots:", i, "Weight sd:", j)) +
+  theme(axis.title = element_text(size = 4),
+        axis.text = element_text(size = 3),
+        title = element_text(size = 6))
+}
+
+for (i in c(10, 15, 20)) {
+  for (j in c(1, 2, 5)) {
+    assign(paste0("plot_", i, "_", j),
+           cherry_spline(cherry_blossoms, i, j))
+  }
+}
+
+gridExtra::grid.arrange(plot_10_1, plot_10_2, plot_10_5,
+                        plot_15_1, plot_15_2, plot_15_5,
+                        plot_20_1, plot_20_2, plot_20_5,
+                        nrow = 3, ncol = 3)
+```
+
+It appears that the combination of knots and weight width influences the general wiggliness of the fit lines.
+
+## 'Hard' exercises
+
+### 4H1
+
+```{r}
+data(Howell1)
+
+d <- Howell1
+
+# create cubic model for height
+
+weight_s <- (d$weight - mean(d$weight))/sd(d$weight)
+weight_s2 <- weight_s^2
+weight_s3 <- weight_s^3
+                                       
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b1*weight_s + b2*weight_s2 + b3*weight_s3,
+  a ~ dnorm(178, 20),
+  b1 ~ dlnorm(0,1),
+  b2 ~ dnorm(0, 10),
+  b3 ~ dnorm(0, 10),
+  sigma ~ dunif(0, 50)
+)
+
+model <- quap(flist, data = d)
+
+weight = c(46.95, 43.72, 64.78, 32.59, 54.63)
+weight_s = (weight - mean(d$weight))/sd(d$weight)
+weight_s2 = weight_s^2
+weight_s3 = weight_s^3
+
+
+# generate predictions for mean height and simulate heights 
+pred_dat <- list(
+  weight = weight, weight_s = weight_s, weight_s2 = weight_s2, weight_s3 = weight_s3 
+)
+
+mu <- link(model, data = pred_dat)
+
+mu.mean <- apply(mu, 2, mean)
+
+sim.height <- sim(model, data = pred_dat)
+height.PI <- apply(sim.height, 2, PI, 0.89)
+
+predictions <- data.frame(
+  weight = weight,
+  predicted_height = mu.mean,
+  lwr = height.PI[1, ],
+  upr = height.PI[2,]
+)
+                 
+predictions
+```
+
+### 4H2
+
+Let's get the data first:
+
+```{r}
+d2 <- d[d$age < 18, ]
+```
+
+Now let's define a linear model - we choose our priors on the basis that we have no idea about a child's height:
+
+```{r}
+meanweight <- mean(weight)
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*(weight - meanweight),
+  a ~ dnorm(100, 20),
+  b ~ dlnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+model <-quap(flist, data = d2)
+```
+
+Let's get an estimate for b:
+
+```{r}
+precis(model)
+```
+
+For every 10 units of weight, the model predicts an additional height of around 27cm.  Let's chart this model.
+
+```{r}
+# get the 89% mean interval
+weight.seq <- seq(from = 0, to = 50, length.out = 100)
+mu <- link(model, data = list(weight =weight.seq))
+mu.PI <- apply(mu, 2, PI, 0.89)
+
+# get the 89% height interval
+sim.height <- sim(model, data = list(weight = weight.seq))
+height.PI <- apply(sim.height, 2, PI, 0.89)
+
+a <- precis(model)$mean[1]
+b <- precis(model)$mean[2]
+
+ggplot() +
+  xlim(0, 50) +
+  geom_point(aes(x = d2$weight, y = d2$height), color = "lightblue") +
+  geom_function(fun = function(x) {a + b*(x - meanweight)}, color = "red") +
+  geom_ribbon(aes(x = weight.seq, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = weight.seq, ymin = height.PI[1, ], ymax = height.PI[2, ]), fill = "pink", alpha = 0.2) +
+  theme_minimal() + 
+  labs(x = "Weight",
+       y = "Height")
+  
+```
+
+Weights seems to have a linear relationship with height in the mid-range of approx 15-35 weight units, but the model underestimates height for this range.  This is because the model overestimates height at the extreme ends.  It looks like a parabolic model might be a better fit here.  I would try a quadratic term next.
+
+### 4H3
+
+```{r}
+d <- Howell1
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*log(weight),
+  a ~ dnorm(100, 20),
+  b ~ dlnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+model <-quap(flist, data = d)
+
+a <- precis(model)$mean[1]
+b <- precis(model)$mean[2]
+
+ggplot() +
+  xlim(0, 75) +
+  ylim(0, 200) +
+  geom_point(aes(x = d$weight, y = d$height), color = "lightblue") +
+  geom_function(fun = function(x) {a + b*log(x)}, color = "red") +
+  theme_minimal() +
+  labs(x = "Weight",
+       y = "Height")
+
+```
+
+This is a remarkably good fit.  So each multiple of weight by $e$ results in an increase in height of approx 49cm.  This would explain the shape of the fit.  Below we estimate the model and plot it.
+
+```{r}
+weight.seq <- seq(from = 0, to = 70, length.out = 1000)
+mu <- link(model, data = list(weight = weight.seq))
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+sim.height <- sim(model, data = list(weight = weight.seq))
+height.PI <- apply(sim.height, 2, PI, 0.97)
+
+g1 <- ggplot() +
+  xlim(0, 75) +
+  ylim(0, 200) +
+  geom_point(aes(x = d$weight, y = d$height), color = "lightblue") +
+  geom_line(aes(x = weight.seq, y = mu.mean), color = "red") +
+  geom_ribbon(aes(x = weight.seq, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = weight.seq, ymin = height.PI[1, ], ymax = height.PI[2, ]), fill = "pink", alpha = 0.2) +
+  theme_minimal()  +
+  labs(x = "Weight",
+       y = "Height",
+       title = "Weights and heights of the Kalahari !Kung San people of all ages")
+
+```
+
+```{r}
+g2 <- ggplot() +
+  xlim(0, 5) +
+  ylim(0, 200) +
+  geom_point(aes(x = log(d$weight), y = d$height), color = "lightblue") +
+  geom_ribbon(aes(x = log(weight.seq), ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = log(weight.seq), ymin = height.PI[1, ], ymax = height.PI[2, ]), fill = "pink", alpha = 0.2) +
+  theme_minimal()  +
+  labs(x = "Log(Weight)",
+       y = "Height")
+
+
+gridExtra::grid.arrange(g1, g2)
+```
+
+### 4H4
+
+Let's simulate our prior for various values of our parameters:
+
+```{r}
+n <- 1000
+data.frame(group = seq_len(n),
+       alpha = rnorm(n, 178, 20),
+       beta1 = rlnorm(n, 0, 1),
+       beta2 = rnorm(n, 0, 1)) %>%
+  expand(nesting(group, alpha, beta1, beta2),
+         weight = seq(25, 70, length.out = 100)) %>%
+  mutate(height = alpha + (beta1 * weight) + (beta2 * (weight ^ 2))) %>%
+  ggplot(aes(x = weight, y = height, group = group)) +
+  geom_line(alpha = 0.2) +
+  geom_hline(yintercept = c(0, 272), linetype = "dashed", color = "blue") +
+  annotate(geom = "text", x = 50, y = 0, hjust = 0, vjust = 1,
+           label = "Lowest possible") +
+  annotate(geom = "text", x = 50, y = 272, hjust = 0, vjust = 0,
+           label = "Highest possible") +
+  ylim(-500, 500) +
+  labs(x = "Weight", y = "Height")
+
+```
+
+Many of these priors are way outside the boundaries of reality.  Now we learned from the previous question that when the relationship is linear on the log, the intercept is negative let's try a negative value for $\alpha$:
+
+```{r}
+n <- 1000
+data.frame(group = seq_len(n),
+       alpha = rnorm(n, -50, 20),
+       beta1 = rlnorm(n, 0, 1),
+       beta2 = rnorm(n, 0, 1)) %>%
+  expand(nesting(group, alpha, beta1, beta2),
+         weight = seq(25, 70, length.out = 100)) %>%
+  mutate(height = alpha + (beta1 * weight) + (beta2 * (weight ^ 2))) %>%
+  ggplot(aes(x = weight, y = height, group = group)) +
+  geom_line(alpha = 0.2) +
+  geom_hline(yintercept = c(0, 272), linetype = "dashed", color = "blue") +
+  annotate(geom = "text", x = 50, y = 0, hjust = 0, vjust = 1,
+           label = "Lowest possible") +
+  annotate(geom = "text", x = 50, y = 272, hjust = 0, vjust = 0,
+           label = "Highest possible") +
+  ylim(-500, 500) +
+  labs(x = "Weight", y = "Height")
+
+```
+
+Hasn't helped a lot, the spread is very wide, so we will reduce the spread of $\alpha$ and of the other coefficients:
+
+```{r}
+n <- 1000
+data.frame(group = seq_len(n),
+       alpha = rnorm(n, -50, 5),
+       beta1 = rlnorm(n, 0, 0.1),
+       beta2 = rnorm(n, 0, 0.1)) %>%
+  expand(nesting(group, alpha, beta1, beta2),
+         weight = seq(25, 70, length.out = 100)) %>%
+  mutate(height = alpha + (beta1 * weight) + (beta2 * (weight ^ 2))) %>%
+  ggplot(aes(x = weight, y = height, group = group)) +
+  geom_line(alpha = 0.2) +
+  geom_hline(yintercept = c(0, 272), linetype = "dashed", color = "blue") +
+  annotate(geom = "text", x = 50, y = 0, hjust = 0, vjust = 1,
+           label = "Lowest possible") +
+  annotate(geom = "text", x = 50, y = 272, hjust = 0, vjust = 0,
+           label = "Highest possible") +
+  ylim(-500, 500) +
+  labs(x = "Weight", y = "Height")
+
+```
+This is better.  But we need to make sure that the curves all move upwards.  So we should change the distribution for $\beta_1$ to a plain normal distribution to restrict it more.  After playing around with a lot of the coefficient distributions we get to this, which seems a reasonable prior:
+
+
+```{r}
+n <- 1000
+data.frame(group = seq_len(n),
+       alpha = rnorm(n, -190, 5),
+       beta1 = rnorm(n, 13, 0.1),
+       beta2 = runif(n, -0.15, -0.09)) %>%
+  expand(nesting(group, alpha, beta1, beta2),
+         weight = seq(25, 70, length.out = 100)) %>%
+  mutate(height = alpha + (beta1 * weight) + (beta2 * (weight ^ 2))) %>%
+  ggplot(aes(x = weight, y = height, group = group)) +
+  geom_line(alpha = 0.2) +
+  geom_hline(yintercept = c(0, 272), linetype = "dashed", color = "blue") +
+  annotate(geom = "text", x = 50, y = 0, hjust = 0, vjust = 1,
+           label = "Lowest possible") +
+  annotate(geom = "text", x = 50, y = 272, hjust = 0, vjust = 0,
+           label = "Highest possible") +
+  ylim(-500, 500) +
+  labs(x = "Weight", y = "Height")
+
+```
+
+### 4H5
+
+First we try a simple linear model:
+
+```{r}
+data("cherry_blossoms")
+
+d <- cherry_blossoms[complete.cases(cherry_blossoms$temp), ]
+d <- d[complete.cases(d$doy), ]
+
+flist <- alist(
+  doy ~ dnorm(mu, sigma),
+  mu <- a + b*temp,
+  # intercept around day 100
+  a ~ dnorm(100, 20),
+  b ~ dnorm(0, 10),
+  sigma ~ dunif(0, 10)
+)
+
+model <- quap(flist, data = d)
+```
+
+Let's simulate the MAP, 97% confidence interval for $\mu$ and 97% prediction interval.
+
+```{r}
+temp.seq <- seq(from = 2, 10, length.out = 1e4)
+mu <- link(model, data = list(temp = temp.seq))
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+doy.sim <- sim(model, data = list(temp = temp.seq))
+doy.PI <- apply(doy.sim, 2, PI, 0.97)
+```
+
+And graph the results:
+
+```{r}
+ggplot() +
+  xlim(2, 10) +
+  geom_point(aes(x = d$temp, y = d$doy), color = "pink") +
+  geom_function(fun = function(x) {precis(model)$mean[1] + precis(model)$mean[2]*x}, color = "red") +
+  geom_ribbon(aes(x = temp.seq, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = temp.seq, ymin = doy.PI[1, ], ymax = doy.PI[2, ]), fill = "lightblue", alpha = 0.2) +
+  theme_minimal() + 
+  labs(x = "March temperature",
+       y = "Day of first blossom")
+
+```
+
+This suggests that higher temperature influences earlier blooming.  Now we try a quadratic model:
+
+```{r}
+meantemp <- mean(d$temp)
+sdtemp <- sd(d$temp)
+temp_s <- (d$temp - meantemp)/sdtemp
+temp_s2 <- temp_s^2
+
+flist <- alist(
+  doy ~ dnorm(mu, sigma),
+  mu <- a + b1*temp_s + b2*temp_s2,
+  # intercept around day 100
+  a ~ dnorm(100, 20),
+  b1 ~ dlnorm(0, 1),
+  b2 ~ dnorm(0, 10),
+  sigma ~ dunif(0, 10)
+)
+
+model <- quap(flist, data = d)
+
+temp.seq <- seq(from = 2, 10, length.out = 1e4)
+temp.seq_s <- (temp.seq - meantemp)/sdtemp
+temp.seq_s2 <- temp.seq_s^2
+
+mu <- link(model, data = list(temp_s = temp.seq_s, temp_s2 = temp.seq_s2))
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+doy.sim <- sim(model, data = list(temp_s = temp.seq_s, temp_s2 = temp.seq_s2))
+doy.PI <- apply(doy.sim, 2, PI, 0.97)
+
+ggplot() +
+  xlim(-2, 3) +
+  geom_point(aes(x = temp_s, y = d$doy), color = "pink") +
+  geom_line(aes(x = temp.seq_s, y = mu.mean), color = "red") +
+  geom_ribbon(aes(x = temp.seq_s, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = temp.seq_s, ymin = doy.PI[1, ], ymax = doy.PI[2, ]), fill = "lightblue", alpha = 0.2) +
+  theme_minimal() + 
+  labs(x = "Standardized March temperature",
+       y = "Day of first blossom")
+
+```
+
+This suggests no major relationship.  Let's try a cubic:
+
+```{r}
+temp_s3 <- temp_s^3
+
+flist <- alist(
+  doy ~ dnorm(mu, sigma),
+  mu <- a + b1*temp_s + b2*temp_s2 + b3*temp_s3,
+  # intercept around day 100
+  a ~ dnorm(100, 20),
+  b1 ~ dlnorm(0, 1),
+  b2 ~ dnorm(0, 10),
+  b3 ~ dnorm(0, 10),
+  sigma ~ dunif(0, 10)
+)
+
+model <- quap(flist, data = d)
+
+temp.seq <- seq(from = 2, 10, length.out = 1e4)
+temp.seq_s <- (temp.seq - meantemp)/sdtemp
+temp.seq_s2 <- temp.seq_s^2
+temp.seq_s3 <- temp.seq_s^3
+
+mu <- link(model, data = list(temp_s = temp.seq_s, temp_s2 = temp.seq_s2,
+                              temp_s3 = temp.seq_s3))
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+doy.sim <- sim(model, data = list(temp_s = temp.seq_s, temp_s2 = temp.seq_s2,
+                                  temp_s3 = temp.seq_s3))
+doy.PI <- apply(doy.sim, 2, PI, 0.97)
+
+ggplot() +
+  xlim(-2, 3) +
+  ylim(90, 130) +
+  geom_point(aes(x = temp_s, y = d$doy), color = "pink") +
+  geom_line(aes(x = temp.seq_s, y = mu.mean), color = "red") +
+  geom_ribbon(aes(x = temp.seq_s, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
+  geom_ribbon(aes(x = temp.seq_s, ymin = doy.PI[1, ], ymax = doy.PI[2, ]), fill = "lightblue", alpha = 0.2) +
+  theme_minimal() + 
+  labs(x = "Standardized March temperature",
+       y = "Day of first blossom")
+
+```
+
+This suggests that there is a range that does not affect first bloosom day, but that highjer temperatures outside this range relate to earlier blossoming.
+
+Finally lets try a splines model based on cubic basis functions:
+
+```{r}
+library(splines)
+
+num_knots <- 15
+knot_list <- quantile(d$temp, probs = seq(0, 1, length.out = num_knots))
+
+B <- bs(d$temp,
+        knots = knot_list[-c(1, num_knots)],
+        degree = 3,
+        intercept = TRUE)
+
+flist <- alist(
+  doy ~ dnorm(mu, sigma),
+  mu <- a + B %*% w,
+  # intercept around day 100
+  a ~ dnorm(100, 20),
+  w ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+model <- quap(flist, data = list(doy = d$doy, B = B),
+              start = list(w = rep(0, ncol(B))))
+
+
+
+mu <- link(model)
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+muPI <- as.data.frame(t(mu.PI))
+data <- cbind(d[ ,c("temp", "doy")], muPI)
+
+g2 <- ggplot(data = data, aes(x = temp, y = doy)) +
+  geom_point(color = "pink") +
+  geom_ribbon(aes(ymin = `2%`, ymax = `98%`), fill = "lightblue", alpha = 0.5) + 
+  theme_classic() +
+  labs(x = "March temperature", y = "Day of First Bloom")
+
+```
+
+Let's look at a similar relationship between year and March temperature:
+
+```{r}
+d <- cherry_blossoms[complete.cases(cherry_blossoms$year), ]
+d <- d[complete.cases(d$temp), ]
+
+num_knots <- 15
+knot_list <- quantile(d$year, probs = seq(0, 1, length.out = num_knots))
+
+B <- bs(d$year,
+        knots = knot_list[-c(1, num_knots)],
+        degree = 3,
+        intercept = TRUE)
+
+flist <- alist(
+  temp ~ dnorm(mu, sigma),
+  mu <- a + B %*% w,
+  # intercept around day 100
+  a ~ dnorm(6, 2),
+  w ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+model <- quap(flist, data = list(temp = d$temp, B = B),
+              start = list(w = rep(0, ncol(B))))
+
+
+
+mu <- link(model)
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, 0.97)
+
+muPI <- as.data.frame(t(mu.PI))
+data <- cbind(d[ ,c("year", "temp")], muPI)
+
+g3 <- ggplot(data = data, aes(x = year, y = temp)) +
+  geom_point(color = "pink") +
+  geom_ribbon(aes(ymin = `2%`, ymax = `98%`), fill = "lightblue", alpha = 0.5) + 
+  theme_classic() +
+  labs(x = "Year", y = "March temperature")
+
+
+```
+Finally let's pull a previous analysis so we can line these up nicely in a way that suggests possible temperature causality:
+
+```{r}
+d <- cherry_blossoms[complete.cases(cherry_blossoms$year), ]
+d <- d[complete.cases(d$doy), ]
+
+num_knots <- 15
+knot_list <- quantile(d$year, probs = seq(0, 1, length.out = num_knots))
+
+B <- bs(d$year,
+        knots = knot_list[-c(1, num_knots)],
+        degree = 3,
+        intercept = TRUE)
+
+flist <- alist(
+  doy ~ dnorm(mu, sigma),
+  mu <- a + B %*% w,
+  a ~ dnorm(100, 10),
+  w ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+model <- quap(
+  flist, data = list(doy = d$doy, B = B), start = list(w = rep(0, ncol(B)))
+) 
+
+mu <- link(model)
+mu_PI <- apply(mu, 2, PI, 0.97)
+
+muPI <- as.data.frame(t(mu_PI))
+data <- cbind(d[ ,c("year", "doy")], muPI)
+
+g1 <- ggplot(data = data, aes(x = year, y = doy)) +
+  geom_point(color = "pink") +
+  geom_ribbon(aes(ymin = `2%`, ymax = `98%`), fill = "lightblue", alpha = 0.5) + 
+  theme_classic() +
+  labs(x = "Year", y = "Day of First Bloom", title = "Cherry Blossom First Bloom in Japan: Years 812-2015")
+
+```
+
+```{r}
+library(patchwork)
+
+g1 / (g2 | g3)
+```

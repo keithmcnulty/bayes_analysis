@@ -1,0 +1,33 @@
+---
+title: "Prediction vs confidence intervals"
+author: "Keith McNulty"
+date: "25/05/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(peopleanalyticsdata)
+library(ggplot2)
+
+model <- lm(Final ~ Yr3, data = ugtests)
+
+data <- data.frame(Yr3 = ugtests$Yr3,
+                   Final = ugtests$Final)
+
+preds <- predict(model, sim, interval = "prediction")
+sim <- cbind(data, preds)
+
+
+ggplot(data = sim, aes(x = Yr3, y = Final)) +
+  geom_point(color = "lightblue") +
+  geom_smooth(method = "lm") +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "pink", alpha = 0.2) +
+  theme_minimal()
+
+
+```

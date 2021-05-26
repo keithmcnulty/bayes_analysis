@@ -1,0 +1,474 @@
+---
+title: "Bayesian Linear Regression - Howell Data"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(tidyverse)
+```
+
+## Obtaining and viewing data
+
+We obtain the data census data for !Kung San and filter to adults:
+
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+
+d2 <- d %>% 
+  dplyr::filter(age >= 18)
+```
+
+We plot the density of the height of the adults:
+
+```{r}
+ggplot(data = d2) +
+  geom_density(aes(x = height), color = "darkblue", fill = "pink") +
+  theme_minimal()
+```
+
+## Proposing a prior
+
+In real life, height is usually normally distributed in a population, so we could propose a normally distributed prior.  Here's a suggestion:
+
+$$
+h_i \sim \mathcal{N}(\mu, \sigma) \\
+\mu \sim \mathcal{N}(177, 20) \\
+\sigma \sim \mathcal{U}(0, 50)
+$$
+
+Since I am 177cm, and two standard devations of 20cm either side gives an extremely wide range of heights, this seems like a very open-minded prior.  Similarly, a standard deviation of up to 50cm seems like it encompasses any reasonable spread.
+
+Let's look at what our prior would look like under these assumptions, based on 10,000 sample observations:
+
+```{r}
+sample_mu <- rnorm(1e4, mean = 178, sd = 20)
+sample_sigma <- runif(1e4, 0, 50)
+prior_h <- rnorm(1e4, mean = sample_mu, sd = sample_sigma)
+
+ggplot() +
+  geom_density(aes(x = prior_h), color = "darkblue", fill = "pink") +
+  theme_minimal()
+```
+
+## Grid approximating the posterior
+
+```{r}
+mu.list <- seq(from = 150, to = 160, length.out = 1000)
+sigma.list <- seq(from = 7, to = 9, length.out = 1000)
+post <- expand.grid(mu = mu.list, sigma = sigma.list)
+
+post$LL <- sapply(1:nrow(post), function(i) {
+  sum(dnorm(d2$height, mean = post$mu[i], sd = post$sigma[i], log = TRUE))
+})
+
+post$prod = post$LL + dnorm(post$mu, mean = 178, sd = 20, log = TRUE) + 
+  dunif(post$sigma, min = 0, max = 50, log = TRUE)
+post$prob <- exp(post$prod - max(post$prod))
+
+
+rethinking::image_xyz(post$mu, post$sigma, post$prob)
+```
+
+## Sampling from the posterior
+
+We take 10,000 samples from the grid-approximated posterior and plot the results:
+
+```{r}
+sample.rows <- sample(1:nrow(post), size = 10000, replace = TRUE, prob = post$prob)
+sample.mu <- post$mu[sample.rows]
+sample.sigma <- post$sigma[sample.rows]
+
+plot(sample.mu, sample.sigma, cex = 0.5, pch = 16, col = col.alpha(rangi2, 0.3))
+```
+
+Let's look at the density plot for $\mu$:
+
+```{r}
+ggplot() +
+  geom_density(aes(x = sample.mu), color = "darkblue", fill = "pink") +
+  theme_minimal()
+```
+
+And the same for $\sigma$:
+
+```{r}
+ggplot() +
+  geom_density(aes(x = sample.sigma), color = "darkblue", fill = "pink") +
+  theme_minimal()
+```
+
+
+Let's get posterior intervals:
+
+```{r}
+PI(sample.mu)
+PI(sample.sigma)
+```
+
+## Quadratic approximation
+
+Now we estimate the posterior through quadratic approximation.  First we define the model:
+
+```{r}
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(178, 20),
+  sigma ~ dunif(0, 50)
+)
+```
+
+Now we fit it with the $d2$ data and take a look at the posterior distribution:
+
+```{r}
+m4.1 <- quap(flist, data = d2)
+precis(m4.1)
+```
+
+Try with a much more precise prior for $\mu$:
+
+```{r}
+m4.2 <- quap(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu ~ dnorm(178, 0.1),
+    sigma ~ dunif(0, 50)
+  ),
+  data = d2
+)
+
+precis(m4.2)
+```
+
+See matrix of covariances for `m4.1`:
+
+```{r}
+vcov(m4.1)
+```
+
+To sample the posterior, we take samples of $\mu$ and $\sigma$ for the mutidimensional Gaussian distribution:
+
+```{r}
+post <- rethinking::extract.samples(m4.1, n = 1e4)
+precis(post)
+```
+
+## Linear relationships
+
+Let's plot height against weight in the adult Howell data:
+
+```{r}
+ggplot(data = d2) +
+  geom_point(aes(x = weight, y = height), color = "blue") + 
+  theme_minimal()
+```
+
+So we anticipate that our heights relate in some way to our weights.  We can redefine our model to estimate the mean of each prior to be linearly dependent on the weight variable.
+
+```{r}
+# mean of x
+meanweight <- mean(d2$weight)
+
+new_mod <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b*(weight - meanweight),
+  a ~ dnorm(178, 20),
+  b ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.3 <- quap(new_mod, data = d2)
+precis(m4.3)
+```
+
+View the variance-covariance matrix for `m4.3`:
+
+```{r}
+round(vcov(m4.3), 3)
+```
+
+Plot the mean posterior against the data:
+
+```{r}
+post <- extract.samples(m4.3, n = 1e4)
+mean_a <- mean(post$a)
+mean_b <- mean(post$b)
+
+ggplot(data = d2, aes(x = weight, y = height)) +
+  geom_point(color = "blue") + 
+  geom_function(fun = function(x) {mean_a + mean_b *(x - meanweight)}, color = "red") +
+  theme_minimal()
+
+```
+
+Now we want to plot uncertainty around our mean posterior.  This command produces 1000 estimates of mu (rows) for each observation of the data in `d2` (columns).
+
+```{r}
+mu <- link(m4.3)
+dim(mu)
+```
+
+We can get the same set of estimates for a specific et of weight values:
+
+```{r}
+weight.seq <- seq(from = 25, to = 70, by = 1)
+mu <- link(m4.3, data = data.frame(weight = weight.seq))
+dim(mu)
+```
+
+Let's plot these values:
+
+```{r}
+plot(height ~ weight, d2, type = "n")
+
+for (i in 1:nrow(mu)) {
+  points(weight.seq, mu[i, ], pch = 16, col = col.alpha(rangi2, 0.1))
+}
+```
+
+We can get some summary for mu for each weight observation:
+
+```{r}
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+```
+
+Plot these summaries:
+
+```{r}
+plot(height ~ weight, data = d2, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+```
+
+## Simulating prediction intervals
+
+The previous section dealt with similating the mean height for a given weight, but we know that actual heights vary around a mean, so we need to bring our $\sigma$ into the frame now.  The `sim()` function simulates a variety of heights based on the posterior (not just mean heights):
+
+```{r}
+sim.height <- sim(m4.3, data = list(weight = weight.seq))
+height.PI <- apply(sim.height, 2, PI, prob = 0.89)
+```
+
+Plot the prediction interval:
+
+```{r}
+plot(height ~ weight, data = d2, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+shade(height.PI, weight.seq)
+```
+
+## Polynomial regression
+
+Let's plot the full Howell's data set:
+
+```{r}
+ggplot(data = Howell1, aes(x = weight, y = height)) +
+  geom_point(color = "lightblue") +
+  theme_minimal()
+```
+This clearly has some curvature to it.  It's possibly parabolic so it might be well modeled by a quadratic polynomial.  Let's try:
+
+```{r}
+# create standardized diff from mean weight
+
+d$weight_s <-(d$weight - mean(d$weight))/sd(d$weight)
+d$weight_s2 <- d$weight_s^2
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b1*weight_s + b2*weight_s2,
+  a ~ dnorm(178, 20),
+  b1 ~ dlnorm(0, 1),
+  b2 ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.5 <- quap(flist, data = d)
+
+precis(m4.5)
+```
+
+Let's plot this fit:
+
+```{r}
+weight.seq <- seq(from = -2.2, to = 2, length.out = 30)
+pred_dat <- list(weight_s = weight.seq, weight_s2 = weight.seq^2)
+mu <- link(m4.5, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+sim.height <- sim(m4.5, data = pred_dat)
+height.PI <- apply(sim.height, 2, PI, prob = 0.89)
+
+plot(height ~ weight_s, d, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+shade(height.PI, weight.seq)
+
+```
+
+Nice! Let's try a cubic:
+
+```{r}
+d$weight_s3 <- d$weight_s^3 
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b1*weight_s + b2*weight_s2 + b3*weight_s3,
+  a ~ dnorm(178, 20),
+  b1 ~ dlnorm(0, 1),
+  b2 ~ dnorm(0, 1),
+  b3 ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.6 <- quap(flist, data = d)
+
+pred_dat <- list(weight_s = weight.seq, weight_s2 = weight.seq^2, weight_s3 = weight.seq^3)
+mu <- link(m4.6, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+sim.height <- sim(m4.6, data = pred_dat)
+height.PI <- apply(sim.height, 2, PI, prob = 0.89)
+
+plot(height ~ weight_s, d, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+shade(height.PI, weight.seq)
+
+```
+
+And even a quartic for fun:
+
+```{r}
+d$weight_s4 <- d$weight_s^4 
+
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu <- a + b1*weight_s + b2*weight_s2 + b3*weight_s3 + b4*weight_s4,
+  a ~ dnorm(178, 20),
+  b1 ~ dlnorm(0, 1),
+  b2 ~ dnorm(0, 1),
+  b3 ~ dnorm(0, 1),
+  b4 ~ dnorm(0, 1),
+  sigma ~ dunif(0, 50)
+)
+
+m4.7 <- quap(flist, data = d)
+
+pred_dat <- list(weight_s = weight.seq, weight_s2 = weight.seq^2, weight_s3 = weight.seq^3,
+                 weight_s4 = weight.seq^4)
+mu <- link(m4.7, data = pred_dat)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob = 0.89)
+sim.height <- sim(m4.7, data = pred_dat)
+height.PI <- apply(sim.height, 2, PI, prob = 0.89)
+
+plot(height ~ weight_s, d, col = col.alpha(rangi2, 0.5))
+lines(weight.seq, mu.mean)
+shade(mu.PI, weight.seq)
+shade(height.PI, weight.seq)
+
+```
+
+## Splines
+
+For this we will need the `cherry_blossoms` data set:
+
+```{r}
+data("cherry_blossoms")
+d <- cherry_blossoms
+precis(d)
+```
+
+Let's look at how consistent the first day of blossom has been over the years:
+
+```{r}
+ggplot(data = d) +
+  geom_point(aes(x = year, y = doy), color = "pink") +
+  theme_minimal()
+
+```
+For our B-spine method, we will costruct some knots:
+
+```{r}
+d2 <- d[complete.cases(d$doy), ]
+num_knots <- 20
+knot_list <- quantile(d2$year, probs = seq(0, 1, length.out = num_knots))
+```
+
+Now we will create basis priors for our splines:
+
+```{r}
+library(splines)
+B <- bs(d2$year,
+        # get rid of the ends
+        knots = knot_list[-c(1, num_knots)],
+        degree = 3,
+        intercept = TRUE)
+```
+
+Let's look at our basis functions:
+
+```{r}
+plot(NULL, xlim = range(d2$year), ylim = c(0, 1), xlab = "year", ylab = "basis")
+for (i in 1:ncol(B)) {
+  lines(d2$year, B[,i])
+}
+```
+
+OK, let's build a model with our basis functions:
+
+```{r}
+flist <- alist(
+  D ~ dnorm(mu, sigma),
+  mu <- a + B %*% w,
+  a ~ dnorm(100, 10),
+  w ~ dnorm(0, 10),
+  sigma ~ dexp(1)
+)
+
+m4.8 <- quap(
+  flist, data = list(D = d2$doy, B = B), start = list(w = rep(0, ncol(B)))
+) 
+
+precis(m4.8, depth = 2)
+```
+
+Let's plot the basis posteriors:
+
+```{r}
+post <- extract.samples(m4.8)
+w <- apply(post$w, 2, mean)
+plot(NULL, xlim = range(d2$year), ylim = c(-6, 6), xlab = "year", ylab = "basis * weight")
+for (i in 1:ncol(B)) {
+  lines(d2$year, w[i]*B[ ,i])
+}
+```
+
+Now we can use these basis posteriors to determine our 97% interval for the mean day of the year:
+
+```{r}
+mu <- link(m4.8)
+mu_PI <- apply(mu, 2, PI, 0.97)
+plot(d2$year, d2$doy, col = col.alpha(rangi2, 0.3), pch = 16)
+shade(mu_PI, d2$year, col = col.alpha("black", 0.5))
+
+```
+
+Try in ggplot2:
+
+```{r}
+muPI <- as.data.frame(t(mu_PI))
+data <- cbind(d2[ ,c("year", "doy")], muPI)
+
+ggplot(data = data, aes(x = year, y = doy)) +
+  geom_point(color = "pink") +
+  geom_ribbon(aes(ymin = `2%`, ymax = `98%`), fill = "lightblue", alpha = 0.5) + 
+  theme_classic() +
+  labs(x = "Year", y = "Day of First Bloom", title = "Cherry Blossom First Bloom in Japan: Years 812-2015")
+```
