@@ -5,7 +5,7 @@ output: html_document
 ---
 
 ```{r setup, echo = FALSE}
-knitr::opts_chunk$set(warning = FALSE, echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
 ## 'Easy' exercises
@@ -40,6 +40,7 @@ Three parameters: $\alpha$, $\beta$ and $\sigma$.  $\mu$ is now determined by $\
 
 ### 4M1
 ```{r}
+set.seed(123)
 library(tidyverse)
 
 sim <- data.frame(
@@ -110,6 +111,7 @@ xlim(0, 15) +
 geom_function(fun = function(x) dexp(x, rate = 0.5)) +
 theme_minimal()
 ```
+
 That seems a bit better, so would probably change my rate in the exponential distribution to $0.5$.
 
 ### 4M7
@@ -506,6 +508,7 @@ data.frame(group = seq_len(n),
   labs(x = "Weight", y = "Height")
 
 ```
+
 This is better.  But we need to make sure that the curves all move upwards.  So we should change the distribution for $\beta_1$ to a plain normal distribution to restrict it more.  After playing around with a lot of the coefficient distributions we get to this, which seems a reasonable prior:
 
 
