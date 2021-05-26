@@ -1,5 +1,5 @@
 ---
-title: "Chapter 5 Exercise Solutions"
+title: "Chapter 4 Exercise Solutions"
 author: "Keith McNulty"
 output: html_document
 ---
@@ -635,8 +635,8 @@ flist <- alist(
   # intercept around day 100
   a ~ dnorm(100, 20),
   b1 ~ dlnorm(0, 1),
-  b2 ~ dnorm(0, 10),
-  b3 ~ dnorm(0, 10),
+  b2 ~ dnorm(0, 5),
+  b3 ~ dnorm(0, 5),
   sigma ~ dunif(0, 10)
 )
 
