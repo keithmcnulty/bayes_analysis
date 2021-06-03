@@ -1,0 +1,64 @@
+---
+title: "QQPlot"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rethinking)
+data(Howell1)
+
+linmodel <- lm(height ~ weight, data = Howell1)
+
+logmodel <- lm(height ~ log(weight), data = Howell1)
+
+
+g1 <- ggplot(data = Howell1, aes(x = weight, y = height)) +
+  geom_point(size = 0.8) +
+  geom_jitter(color = "blue") +
+  geom_smooth(method = "lm", color = "red") + 
+  theme_minimal() +
+  labs(x = "Weight", y = "Height")
+  
+g2 <- ggplot(data = Howell1, aes(x = weight, y = height)) +
+  geom_point(size = 0.8) +
+  geom_jitter(color = "blue") +
+  geom_smooth(formula = "y ~ log(x)", method = "lm", color = "red") + 
+  theme_minimal() +
+  labs(x = "Weight", y = "Height")
+
+g3 <- ggplot() +
+  geom_histogram(aes(x = linmodel$residuals, y=..density..), fill = "lightblue", color = "pink") +
+  geom_density(aes(x = linmodel$residuals), alpha=.2, fill="#FF6666", inherit.aes = FALSE) +
+  theme_minimal() +
+  labs(x = "Residual", y = "Density")
+
+g4 <- ggplot() +
+  geom_histogram(aes(x = logmodel$residuals, y=..density..), fill = "lightblue", color = "pink") +
+  geom_density(aes(x = logmodel$residuals), alpha=.2, fill="#FF6666", inherit.aes = FALSE) +
+  theme_minimal() +
+  labs(x = "Residual", y = "Density")
+
+g5 <- ggplot() +
+  stat_qq(aes(sample = linmodel$residuals), color = "blue", size = 1.5) +
+  stat_qq_line(aes(sample = linmodel$residuals), color = "red") +
+  theme_minimal() +
+  labs(x = "Theoretical", y = "Sample")
+
+g6 <- ggplot() +
+  stat_qq(aes(sample = logmodel$residuals), color = "blue", size = 1.5) +
+  stat_qq_line(aes(sample = logmodel$residuals), color = "red") +
+  theme_minimal() +
+  labs(x = "Theoretical", y = "Sample")
+
+library(patchwork)
+
+(g1 | g2) /
+(g3 | g4) /
+(g5 | g6)
+
+```

@@ -664,6 +664,7 @@ ggplot() +
   xlim(-2, 3) +
   ylim(90, 130) +
   geom_point(aes(x = temp_s, y = d$doy), color = "pink") +
+  geom_jitter() +
   geom_line(aes(x = temp.seq_s, y = mu.mean), color = "red") +
   geom_ribbon(aes(x = temp.seq_s, ymin = mu.PI[1, ], ymax = mu.PI[2, ]), fill = "grey", alpha = 0.5) +
   geom_ribbon(aes(x = temp.seq_s, ymin = doy.PI[1, ], ymax = doy.PI[2, ]), fill = "lightblue", alpha = 0.2) +
@@ -673,7 +674,7 @@ ggplot() +
 
 ```
 
-This suggests that there is a range that does not affect first bloosom day, but that highjer temperatures outside this range relate to earlier blossoming.
+This suggests that there is a range that does not affect first blossom day, but that higher temperatures outside this range relate to earlier blossoming.
 
 Finally lets try a splines model based on cubic basis functions:
 
@@ -807,3 +808,8 @@ library(patchwork)
 
 g1 / (g2 | g3)
 ```
+
+
+We see supporting evidence that March temperature is playing a causal role in this trend.
+
+
