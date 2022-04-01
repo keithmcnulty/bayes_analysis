@@ -12,7 +12,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 
 ### 4E1
 
-The likelihood is 
+The likelihood is
 
 $$
 y_i \sim \mathcal{N}(\mu, \sigma)
@@ -20,7 +20,7 @@ $$
 
 ### 4E2
 
-Two parameters are in the posterior distribution:  $\mu$ and $\sigma$.
+Two parameters are in the posterior distribution: $\mu$ and $\sigma$.
 
 ### 4E3
 
@@ -34,11 +34,12 @@ The linear model is $\mu_i = \alpha + \beta x_i$.
 
 ### 4E5
 
-Three parameters: $\alpha$, $\beta$ and $\sigma$.  $\mu$ is now determined by $\alpha$ and $\beta$.
+Three parameters: $\alpha$, $\beta$ and $\sigma$. $\mu$ is now determined by $\alpha$ and $\beta$.
 
 ## 'Medium' Exercises
 
 ### 4M1
+
 ```{r}
 set.seed(123)
 library(tidyverse)
@@ -86,24 +87,23 @@ h_i \sim \mathcal{N}(\mu_i, \sigma) \\
 \beta \sim \mathcal{N}(0, 1) \\
 \sigma \sim \mathrm{Exp}(1)
 $$
- 
+
 ### 4M5
 
-If every student got taller each year, then the mean height would get taller each year, which means that $\beta$ would have some positive slope.  So we would adjust $\beta$ to be centered on a number greater than zero.
+If every student got taller each year, then the mean height would get taller each year, which means that $\beta$ would have some positive slope. So we would adjust $\beta$ to be centered on a number greater than zero.
 
-### 4M6 
+### 4M6
 
-If the variance is less than 64 then the standard deviation is less than 8.  Let's take a look at the current distribution for $sigma$.
+If the variance is less than 64 then the standard deviation is less than 8. Let's take a look at the current distribution for $sigma$.
 
 ```{r}
 ggplot() +
   xlim(0, 15) +
   geom_function(fun = function(x) dexp(x, rate = 1)) +
   theme_minimal()
-``` 
+```
 
-OK, so this seems to discount any $\sigma$ > 4.  We might want to adjust our rate a bit:
- 
+OK, so this seems to discount any $\sigma$ \> 4. We might want to adjust our rate a bit:
 
 ```{r}
 ggplot() +
@@ -154,7 +154,7 @@ vcov(m4.3)
 vcov(m4.3_nomean)
 ```
 
-Centering around the mean has almost eliminated the covariances.  Let's compare posterior models:
+Centering around the mean has almost eliminated the covariances. Let's compare posterior models:
 
 ```{r}
 # plot centered
@@ -340,7 +340,7 @@ Let's get an estimate for b:
 precis(model)
 ```
 
-For every 10 units of weight, the model predicts an additional height of around 27cm.  Let's chart this model.
+For every 10 units of weight, the model predicts an additional height of around 27cm. Let's chart this model.
 
 ```{r}
 # get the 89% mean interval
@@ -367,7 +367,7 @@ ggplot() +
   
 ```
 
-Weights seems to have a linear relationship with height in the mid-range of approx 15-35 weight units, but the model underestimates height for this range.  This is because the model overestimates height at the extreme ends.  It looks like a parabolic model might be a better fit here.  I would try a quadratic term next.
+Weights seems to have a linear relationship with height in the mid-range of approx 15-35 weight units, but the model underestimates height for this range. This is because the model overestimates height at the extreme ends. It looks like a parabolic model might be a better fit here. I would try a quadratic term next.
 
 ### 4H3
 
@@ -398,7 +398,7 @@ ggplot() +
 
 ```
 
-This is a remarkably good fit.  So each multiple of weight by $e$ results in an increase in height of approx 49cm.  This would explain the shape of the fit.  Below we estimate the model and plot it.
+This is a remarkably good fit. So each multiple of weight by $e$ results in an increase in height of approx 49cm. This would explain the shape of the fit. Below we estimate the model and plot it.
 
 ```{r}
 weight.seq <- seq(from = 0, to = 70, length.out = 1000)
@@ -463,7 +463,7 @@ data.frame(group = seq_len(n),
 
 ```
 
-Many of these priors are way outside the boundaries of reality.  Now we learned from the previous question that when the relationship is linear on the log, the intercept is negative let's try a negative value for $\alpha$:
+Many of these priors are way outside the boundaries of reality. Now we learned from the previous question that when the relationship is linear on the log, the intercept is negative let's try a negative value for $\alpha$:
 
 ```{r}
 n <- 1000
@@ -509,8 +509,7 @@ data.frame(group = seq_len(n),
 
 ```
 
-This is better.  But we need to make sure that the curves all move upwards.  So we should change the distribution for $\beta_1$ to a plain normal distribution to restrict it more.  After playing around with a lot of the coefficient distributions we get to this, which seems a reasonable prior:
-
+This is better. But we need to make sure that the curves all move upwards. So we should change the distribution for $\beta_1$ to a plain normal distribution to restrict it more. After playing around with a lot of the coefficient distributions we get to this, which seems a reasonable prior:
 
 ```{r}
 n <- 1000
@@ -583,7 +582,7 @@ ggplot() +
 
 ```
 
-This suggests that higher temperature influences earlier blooming.  Now we try a quadratic model:
+This suggests that higher temperature influences earlier blooming. Now we try a quadratic model:
 
 ```{r}
 meantemp <- mean(d$temp)
@@ -627,7 +626,7 @@ ggplot() +
 
 ```
 
-This suggests no major relationship.  Let's try a cubic:
+This suggests no major relationship. Let's try a cubic:
 
 ```{r}
 temp_s3 <- temp_s^3
@@ -763,6 +762,7 @@ g3 <- ggplot(data = data, aes(x = year, y = temp)) +
 
 
 ```
+
 Finally let's pull a previous analysis so we can line these up nicely in a way that suggests possible temperature causality:
 
 ```{r}
@@ -809,7 +809,4 @@ library(patchwork)
 g1 / (g2 | g3)
 ```
 
-
 We see supporting evidence that March temperature is playing a causal role in this trend.
-
-

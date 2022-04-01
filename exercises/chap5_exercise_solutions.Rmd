@@ -1,0 +1,424 @@
+---
+title: "Chapter 5 Exercise Solutions"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## 'Easy' exercises
+
+### 5E1
+
+2 and 4 are multiple regressions
+
+### 5E2
+
+$$
+\mathrm{AnimDiv}_{i} \sim \mathcal{N}(\mu, \sigma) \\
+\mu = \alpha + \beta_{\mathrm{Lat}}\mathrm{Lat} + \beta_{\mathrm{PlaDiv}}\mathrm{PlaDiv}
+$$
+
+### 5E3
+
+$$
+\mathrm{Time} \sim \mathcal{N}(\mu, \sigma) \\
+\mu = \alpha + \beta_{\mathrm{Funding}}\mathrm{Funding} + \beta_{\mathrm{LabSize}}\mathrm{LabSize}
+$$
+
+You would expect $\beta_{\mathrm{Funding}}$ and $\beta_{\mathrm{LabSize}}$ to both be positive in order to show a positive relationship together.  However, they may be negatively associated with each other, thus suggesting no effect in separate bivariate model.  The theory of economies of scale could suggest that smaller labs mean higher per student funding.
+
+### 5E4
+
+Models 1, 3, 4 and 5 are all inferentially equivalent, as each have either 4 indicator variables with no intercept or 3 indicator variables with an intercept.
+
+## 'Medium' exercises
+
+### 5M1
+
+The number of cows and the amount of cow dung are both likely to correlate with total beef and milk sales, but in a multiple linear model, we would not expect to see an independent association between cow dung and beef and milk sales. 
+
+### 5M2
+
+The extent of coronary heart disease could relate to the level of exercise an individual engages (negative) in and the extent of their smoking (positive).  We may also expect those who exercise more to be more health conscious and therefore smoke less.  
+
+### 5M3
+
+A higher divorce rate will mean more people are legally free to remarry hence this could lead to a higher marriage rate.  By adding data on whether marriages were not a first marriage, it may be possible to infer some causality from divorce.
+
+### 5M4
+
+We will need to use recent state statistics, which is not entirely aligned with the 2009 data in the `WaffleDivorce` data set, but should be close enough for a cursory examination.
+
+```{r}
+library(rethinking)
+library(dplyr)
+data("WaffleDivorce")
+d <- WaffleDivorce
+lds <- read.csv("QL_S_2000_3_11c.csv")
+
+# join data
+d <- d |> 
+  dplyr::left_join(lds, by = c("Location" = "State"))
+
+# reduce to complete cases
+d <- d[complete.cases(d), ]
+
+# standardize important variables
+d$D <- standardize(d$Divorce)
+d$A <- standardize(d$MedianAgeMarriage)
+d$M <- standardize(d$Marriage)
+d$L <- standardize(d$Percent)
+
+# run a multiple linear regression model
+model <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bA * A + bM * M + bL * L,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 1),
+    bM ~ dnorm(0, 1),
+    bL ~ dnorm(0, 1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model)
+```
+
+We see evidence of independent effects of both average age at marriage and membership of LDS on divorce rates.
+
+Let's extend this and look at the graphical differences.  First let's simulate the posterior of a multiple linear regression model based on average age at marriage and marriage rate.
+
+```{r}
+library(plotly)
+
+model_AM <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bM*M + bA*A,
+    a ~ dnorm(0, 0.2),
+    bM ~ dnorm(0, 0.5),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+M_seq <- sample(seq(-2.5, 2.5, length.out = 10000), 1000) 
+A_seq <- sample(seq(-2.5, 2.5, length.out = 10000), 1000) 
+sim_data <- data.frame(M = M_seq, A = A_seq)
+
+s <- sim(model_AM, data = sim_data)
+
+s_mu <- apply(s, 2, mean)
+s_PI <- apply(s, 2, PI)
+
+model_AM_data <- data.frame(
+  M = M_seq,
+  A = A_seq,
+  D = s_mu,
+  D_low = s_PI[1,],
+  D_high = s_PI[2,]
+)
+
+
+plot_ly(data = d) %>%
+    add_trace(x = ~A, y = ~M, z = ~D, mode = "markers", type = "scatter3d",
+              marker = list(size = 5, symbol = 104, 
+                            color = ~ifelse(Location %in% c("Idaho", "Utah"), "red", "blue") 
+                            ), name = "Observations") %>%
+    add_trace(z = model_AM_data$D, x = model_AM_data$A, y = model_AM_data$M, type = "mesh3d", 
+              name = "Fitted mean", intensity = 1,
+              colorscale = list(c(0, "pink"), c(1, "pink")),
+              showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_AM_data$D_high, x = model_AM_data$A, y = model_AM_data$M, type = "mesh3d", 
+              name = "Fitted PI", intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_AM_data$D_low, x = model_AM_data$A, y = model_AM_data$M, type = "mesh3d", 
+              intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE) %>%
+    layout(scene = list(
+      xaxis = list(title = 'Age at Marriage (std)'), 
+      yaxis = list(title = 'Marriage Rate (std)'),
+      camera = list(eye = list(x = -0.5, y = 2, z = 0)),
+      zaxis = list(title = 'Divorce Rate (std)'), 
+      aspectmode='cube'
+    )) 
+
+
+```
+
+Now let's plot a model based on age and membership of LDS:
+
+```{r}
+model_AL <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bL*L + bA*A,
+    a ~ dnorm(0, 0.2),
+    bL ~ dnorm(0, 0.5),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+L_seq <- sample(seq(-2.5, 6, length.out = 10000), 1000) 
+A_seq <- sample(seq(-2.5, 2.5, length.out = 10000), 1000) 
+sim_data <- data.frame(L = L_seq, A = A_seq)
+
+s <- sim(model_AL, data = sim_data)
+
+s_mu <- apply(s, 2, mean)
+s_PI <- apply(s, 2, PI)
+
+model_AL_data <- data.frame(
+  L = L_seq,
+  A = A_seq,
+  D = s_mu,
+  D_low = s_PI[1,],
+  D_high = s_PI[2,]
+)
+
+
+plot_ly(data = d) %>%
+    add_trace(x = ~A, y = ~L, z = ~D, mode = "markers", type = "scatter3d",
+              marker = list(size = 5, symbol = 104, 
+                            color = ~ifelse(Location %in% c("Idaho", "Utah"), "red", "blue") 
+                            ), name = "Observations") %>%
+    add_trace(z = model_AL_data$D, x = model_AL_data$A, y = model_AL_data$L, type = "mesh3d", 
+              name = "Fitted mean", intensity = 1,
+              colorscale = list(c(0, "pink"), c(1, "pink")),
+              showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_AL_data$D_high, x = model_AL_data$A, y = model_AL_data$L, type = "mesh3d", 
+              name = "Fitted PI", intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_AL_data$D_low, x = model_AL_data$A, y = model_AL_data$L, type = "mesh3d", 
+              intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE) %>%
+    layout(scene = list(
+      xaxis = list(title = 'Age at Marriage (std)'), 
+      yaxis = list(title = 'LDS Rate (std)'),
+      camera = list(eye = list(x = -0.5, y = 2, z = 0)),
+      zaxis = list(title = 'Divorce Rate (std)'), 
+      aspectmode='cube'
+    )) 
+
+
+```
+
+We could jump ahead and also try an interactive term, on the basis that LDS membership could influence average age at marriage:
+
+```{r}
+model_ALint <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bL*L + gamma*A,
+    gamma <- aint + bLint*L,
+    a ~ dnorm(0, 0.2),
+    bL ~ dnorm(0, 0.5),
+    aint ~ dnorm(0, 0.2),
+    bLint ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+L_seq <- sample(seq(-2.5, 6, length.out = 10000), 1000) 
+A_seq <- sample(seq(-2.5, 2.5, length.out = 10000), 1000) 
+sim_data <- data.frame(L = L_seq, A = A_seq)
+
+s <- sim(model_ALint, data = sim_data)
+
+s_mu <- apply(s, 2, mean)
+s_PI <- apply(s, 2, PI)
+
+model_ALint_data <- data.frame(
+  L = L_seq,
+  A = A_seq,
+  D = s_mu,
+  D_low = s_PI[1,],
+  D_high = s_PI[2,]
+)
+
+
+plot_ly(data = d) %>%
+    add_trace(x = ~A, y = ~L, z = ~D, mode = "markers", type = "scatter3d",
+              marker = list(size = 5, symbol = 104, 
+                            color = ~ifelse(Location %in% c("Idaho", "Utah"), "red", "blue") 
+                            ), name = "Observations") %>%
+    add_trace(z = model_ALint_data$D, x = model_ALint_data$A, y = model_ALint_data$L, 
+              type = "mesh3d", 
+              name = "Fitted mean", intensity = 1,
+              colorscale = list(c(0, "pink"), c(1, "pink")),
+              showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_ALint_data$D_high, x = model_ALint_data$A, y = model_ALint_data$L, 
+              type = "mesh3d", 
+              name = "Fitted PI", intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE, showlegend = TRUE) %>%
+    add_trace(z = model_ALint_data$D_low, x = model_ALint_data$A, y = model_ALint_data$L, 
+              type = "mesh3d", 
+              intensity = 1, 
+              colorscale = list(c(0, "lightpink"), c(1, "lightpink")),
+              opacity = 0.2, showscale = FALSE) %>%
+    layout(scene = list(
+      xaxis = list(title = 'Age at Marriage (std)'), 
+      yaxis = list(title = 'LDS Rate (std)'),
+      camera = list(eye = list(x = -0.5, y = 2, z = 0)),
+      zaxis = list(title = 'Divorce Rate (std)'), 
+      aspectmode='cube'
+    )) 
+
+
+
+```
+
+
+### 5M5
+
+Let's say that $O$ is obesity rate, $G$ is gasoline price, $D$ is time spend driving, $E$ is time spend exercising and $R$ is time spent in restaurants.  The suggested causal model is as follows:
+
+```{r}
+library(dagitty)
+dag <- dagitty("dag{O <- E <- D -> R -> O; G -> D}")
+coordinates(dag) <- list(x = c(G = 0, D = 0.33, E = 0.66, R = 0.66, O = 1),
+                         y = c(G = 0.5, D = 0.5, E = 0, R = 1, O = 0.5))
+drawdag(dag)
+
+```
+
+Two linear regression models using the variables G, D, E and G, D, R against O respectively would help see if the data supports these mechanisms.
+
+### 5H1
+
+Let's use `dagitty` to get the implied conditional independencies.
+
+```{r}
+dag <- dagitty("dag{M -> A -> D}")
+impliedConditionalIndependencies(dag)
+```
+
+Now let's see what the Markov equivalent DAGs are:
+
+```{r}
+equivalentDAGs(dag) |> 
+  drawdag()
+```
+
+We can see that the middle DAG is the one supported by the data as per the analysis in this chapter, and therefore the data is consistent with this DAG.
+
+### 5H2
+
+We create the new model to support the DAG:
+
+```{r}
+model <- quap(
+  alist(
+    # A -> D
+    D ~ dnorm(mu1, sigma1),
+    mu1 <- a1 + bA*A,
+    a1 ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    sigma1 ~ dexp(1),
+    # M -> A
+    A ~ dnorm(mu2, sigma2),
+    mu2 <- a2 + bM*M,
+    a2 ~ dnorm(0, 0.2),
+    bM ~ dnorm(0, 0.5),
+    sigma2 ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Now we estimate the counterfactual effect of halving a states marriage rate on A and D:
+
+```{r}
+M_seq <- seq(-2, 2, length.out = 30)
+sim_dat <- data.frame(M = M_seq)
+s <- sim(model, data = sim_dat, vars = c("A", "D"))
+```
+
+Now plot counterfactual effect of M on A:
+
+```{r}
+plot(sim_dat$M, colMeans(s$A), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated M", ylab = "Counterfactual A")
+shade(apply(s$A, 2, PI), sim_dat$M)
+mtext("Total counterfactual effect of M on A")
+
+```
+
+Now plot counterfactual effect of M on D:
+
+```{r}
+plot(sim_dat$M, colMeans(s$D), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated M", ylab = "Counterfactual D")
+shade(apply(s$D, 2, PI), sim_dat$M)
+mtext("Total counterfactual effect of M on D")
+
+```
+
+The average marriage rate in the data set is approximately `r round(mean(d$Marriage))`% and the standard deviation is approximately `r round(sd(d$Marriage))`.  Halving this would reduce it by `r round(mean(d$Marriage)/2)` percentage points, which is about 2.5 standard deviations.  This looks like it would result in about a standard deviation reduction in divorce rates, which equates to approximately a `r round(sd(d$Divorce))` percentage points.
+
+### 5H3
+
+Let's run the milk energy model under these new causal assumptions:
+
+```{r}
+data("milk")
+d <- milk
+
+d$K <- standardize(d$kcal.per.g)
+d$N <- standardize(d$neocortex.perc)
+d$M <- standardize(log(d$mass))
+
+d <- d[complete.cases(d$M, d$N, d$K), ]
+
+model <- quap(
+  alist(
+    # M -> K <- N
+    K ~ dnorm(mu1, sigma1),
+    mu1 <- a1 + bM*M + bN*N,
+    a1 ~ dnorm(0, 0.2),
+    bM ~ dnorm(0, 0.5),
+    bN ~ dnorm(0, 0.5),
+    sigma1 ~ dexp(1),
+    # M -> N
+    N ~ dnorm(mu2, sigma2),
+    mu2 <- a2 + bMN*M,
+    a2 ~ dnorm(0, 0.2),
+    bMN ~ dnorm(0, 0.5),
+    sigma2 ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Now let's simulate the effect of M on N and K:
+
+```{r}
+M_seq <- seq(-2, 2, length.out = 30)
+sim_dat <- data.frame(M = M_seq)
+s <- sim(model, data = sim_dat, vars = c("N", "K"))
+```
+
+Now we plot the counterfactual effect of M on K:
+
+```{r}
+plot(sim_dat$M, colMeans(s$K), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated M", ylab = "Counterfactual K")
+shade(apply(s$K, 2, PI), sim_dat$M)
+mtext("Total counterfactual effect of M on K")
+```
+
+The log mean mass in the sample is approximately 2.8.  Doubling this mass would increase the log mass to 3.5 which is an increase in log mass of 0.7.  This is about a third of a standard deviation increase in log mass.   Visually this looks like it would reduce K by 0.2 standard deviations which is about 0.35 kcal per g.

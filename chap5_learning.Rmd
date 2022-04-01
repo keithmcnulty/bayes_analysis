@@ -1,0 +1,509 @@
+---
+title: "Chapter 5"
+author: "Keith McNulty"
+date: "29/03/2022"
+output: html_document
+---
+
+
+```{r}
+library(rethinking)
+library(dagitty)
+```
+
+## Divorce vs Marriage Age
+
+```{r}
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize
+d$D <- standardize(d$Divorce)
+d$M <- standardize(d$Marriage)
+d$A <- standardize(d$MedianAgeMarriage)
+
+# check sd of median marriage age
+sd(d$MedianAgeMarriage)
+
+```
+
+
+Compute posterior:
+
+```{r}
+# simple linear model
+m5.1 <- quap(
+  alist(
+    D ~ dnorm(mu, sigma), # divorce normall distributed around my with sd sigma
+    mu <- a + bA*A, # mu is linearly related to A
+    a ~ dnorm(0, 0.2), # intercept is approximately zero 
+    bA ~ dnorm(0, 0.5), #slope is mostly between -1 and 1
+    sigma ~ dexp(1) # sd
+  ),
+  data = d
+)
+```
+
+Simulate D from the priors:
+
+```{r}
+set.seed(10)
+
+prior <- extract.prior(m5.1)
+mu <- link(m5.1, post = prior, data = list(A = c(-2, 2)))
+plot(NULL, xlim = c(-2, 2), ylim = c(-2, 2))
+for (i in 1:50) {
+  lines(c(-2, 2), mu[i, ], col = col.alpha("black", 0.4))
+}
+
+```
+
+Plot posterior:
+
+```{r}
+A_seq <- seq(from = -3, to = 3.2, length.out = 30) # range of A for mean computation
+mu <- link(m5.1, data = list(A = A_seq))
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+# plot
+plot(D ~ A, data = d, col = rangi2)
+lines(A_seq, mu.mean, lwd = 2)
+shade(mu.PI, A_seq)
+```
+
+## Divorce Rate vs Marriage Rate
+
+```{r}
+# check sd of marriage rate
+sd(d$Marriage)
+
+# so if the slope was 1, we'd expect that 4% higher marriage rate would mean almost 4% higher divorce rate - seems reasonable
+```
+
+Compute posterior:
+
+```{r}
+m5.2 <- quap(
+  alist(
+    D ~ dnorm(mu, sigma), # normal
+    mu <- a + bM*M, #linear
+    a ~ dnorm(0, 0.1), # approx 0
+    bM ~ dnorm(0, 0.5), # between -1 and 1 mostly
+    sigma ~ dexp(1) 
+  ),
+  data = d
+)
+```
+
+Plot posterior:
+
+```{r}
+M_seq <- seq(-3, 3.2, length.out = 30)
+mu <- link(m5.2, data = list(M = M_seq))
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+plot(D ~ M, data = d, col = rangi2)
+lines(M_seq, mu.mean, lwd = 2)
+shade(mu.PI, M_seq)
+```
+
+## Drawing a DAG
+
+```{r}
+dag5.1 <- dagitty("dag{A -> M; A -> D; M -> D}")
+coordinates(dag5.1) <- list(x = c(A = 0, D = 1, M = 2), y = c(A = 0, M = 0, D = 1))
+drawdag(dag5.1)
+```
+
+
+```{r}
+DMA_dag1 <- dagitty("dag{D <- A -> M -> D}")
+DMA_dag2 <- dagitty("dag{D <- A -> M}")
+
+impliedConditionalIndependencies(DMA_dag1)
+```
+
+```{r}
+impliedConditionalIndependencies(DMA_dag2)
+```
+
+
+## Multiple linear model
+
+```{r}
+m5.3 <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bM*M + bA*A,
+    a ~ dnorm(0, 0.02),
+    bM ~ dnorm(0, 0.5),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(m5.3)
+```
+
+```{r, eval = FALSE}
+plot(coefs_list, par = c("bA", "bM")) 
+
+```
+
+## Predictor residual plots ~  Age at Marriage -> Marriage Rate
+
+```{r}
+m5.4 <- quap(
+  alist(
+    M ~ dnorm(mu, sigma),
+    mu <- a + bAM * A,
+    a ~ dnorm(0, 0.2),
+    bAM ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+mu <- link(m5.4)
+mu_mean <- apply(mu, 2, mean)
+mu_resid <- d$M - mu_mean
+
+# plot marriage rate against age at marriage
+A_seq <- seq(-3, 3.2, length.out = 30)
+mu <- link(m5.4, data = list(A = A_seq))
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+plot(M ~ A, data = d, col = rangi2)
+lines(A_seq, mu.mean, lwd = 2)
+shade(mu.PI, A_seq)
+
+
+```
+
+```{r}
+d_resid <- cbind(d, resid = mu_resid)
+
+# residual model
+resid.mod <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bR*resid,
+    a ~ dnorm(0, 0.02),
+    bR ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d_resid
+)
+
+mu <- link(resid.mod, data = list(resid = d_resid$resid))
+mu_mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+plot(d_resid$resid, d_resid$D)
+lines(d_resid$resid, mu_mean, lwd = 2)
+shade(mu.PI, d_resid$resid)
+
+```
+
+## Posterior prediction plots - Predicted vs Observed
+
+```{r}
+# create predictions from observed data
+mu <- link(m5.3)
+mu_mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+# simulate instances using original data
+D_sim <- sim(m5.3, n = 10000)
+D_PI <- apply(D_sim, 2, PI)
+
+# now plot
+# first predicted vs observed
+plot(mu_mean ~ d$D, col = rangi2, ylim = range(mu.PI),
+     xlab = "Observed divorce rate", ylab = "Predicted divorce rate")
+
+# add perfect correlation line
+abline(a = 0, b = 1, lty = 2)
+
+# add simulated PIs
+for (i in 1:nrow(d)) {
+  lines(rep(d$D[i], 2), mu.PI[, i], col = rangi2)
+}
+
+```
+
+## Counterfactual plots
+
+```{r}
+m5.3_A <- quap(
+  alist(
+    ## A -> D <- M
+    D ~ dnorm(mu, sigma),
+    mu <- a + bM*M + bA*A,
+    a ~ dnorm(0, 0.02),
+    bM ~ dnorm(0, 0.5),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1),
+    ## A -> M
+    M ~ dnorm(mu_M, sigma_M),
+    mu_M <- aM + bAM*A,
+    aM ~ dnorm(0, 0.02),
+    bAM ~ dnorm(0, 0.5), 
+    sigma_M ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Simulate counterfactual plots A -> D:
+
+```{r}
+A_seq <- seq(-2, 2, length.out = 30)
+
+# simulate D amd M from A
+sim_dat <- data.frame(A = A_seq)
+s <- sim(m5.3_A, data = sim_dat, vars = c("M", "D"))
+
+# plot
+plot(sim_dat$A, colMeans(s$D), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated A", ylab = "Counterfactual D")
+shade(apply(s$D, 2, PI), sim_dat$A)
+mtext("Total counterfactual effect of A on D")
+
+```
+
+And A -> M:
+
+```{r}
+# plot
+plot(sim_dat$A, colMeans(s$M), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated A", ylab = "Counterfactual M")
+shade(apply(s$M, 2, PI), sim_dat$A)
+mtext("Total counterfactual effect of A on M")
+
+```
+
+What about M -> D?
+
+```{r}
+sim2_dat <- data.frame(M = seq(-2, 2, length.out = 30), A = 0)
+s2 <- sim(m5.3_A, data = sim2_dat, vars = "D")
+
+plot(sim2_dat$M, colMeans(s2), ylim = c(-2, 2), type = "l",
+     xlab = "Manipulated M", ylab = "Counerfactual D")
+
+shade(apply(s2, 2, PI), sim2_dat$M)
+mtext("Total counterfactual effect of M on D")
+
+```
+
+
+## Masked relationship
+
+Load milk data:
+
+```{r}
+library(rethinking)
+data(milk)
+d <- milk
+str(d)
+```
+
+Standardize:
+
+```{r}
+d$K <- standardize(d$kcal.per.g)
+d$N <- standardize(d$neocortex.perc)
+d$M <- standardize(d$mass)
+```
+
+Run a bivariate linear regression with vague priors:
+
+```{r}
+dcc <- d[complete.cases(d$K, d$N, d$M), ]
+
+m5.5_draft <- quap(
+  alist(
+    K ~ dnorm(mu, sigma),
+    mu <- a + bN*N,
+    a ~ dnorm(0, 1),
+    bN ~ dnorm(0, 1),
+    sigma ~ dexp(1)
+  ),
+  data = dcc
+)
+```
+
+Plot priors:
+
+```{r}
+prior <- extract.prior(m5.5_draft)
+xseq <- c(-2, 2)
+mu <- link(m5.5_draft, post = prior, data = list(N = xseq))
+plot(NULL, xlim = xseq, ylim = xseq)
+for (i in 1:50) {
+  lines(xseq, mu[i, ], col = col.alpha("black", 0.3))
+}
+
+```
+
+Recalibrate priors:
+
+```{r}
+m5.5 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma),
+    mu <- a + bN*N,
+    a ~ dnorm(0, 0.2),
+    bN ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = dcc
+)
+
+```
+
+Check again:
+
+```{r}
+prior <- extract.prior(m5.5)
+xseq <- c(-2, 2)
+mu <- link(m5.5, post = prior, data = list(N = xseq))
+plot(NULL, xlim = xseq, ylim = xseq)
+for (i in 1:50) {
+  lines(xseq, mu[i, ], col = col.alpha("black", 0.3))
+}
+
+```
+
+Check posterior:
+
+```{r}
+precis(m5.5)
+```
+
+Plot posterior:
+
+```{r}
+xseq <- seq(min(dcc$N) - 0.15, max(dcc$N) + 0.15, length.out = 30)
+mu <- link(m5.5, data = list(N = xseq))
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+plot(K ~ N, data = dcc)
+lines(xseq, mu_mean, lwd = 2)
+shade(mu_PI, xseq)
+```
+Now a bivariate model for body mass:
+
+```{r}
+dcc$logmass <- standardize(log(dcc$mass))
+m5.6 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma),
+    mu <- a + bM*logmass,
+    a ~ dnorm(0, 0.2),
+    bM ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = dcc
+)
+
+precis(m5.6)
+```
+
+Plot posterior:
+
+```{r}
+xseq <- seq(min(dcc$logmass) - 0.15, max(dcc$logmass) + 0.15, length.out = 30)
+mu <- link(m5.6, data = list(logmass = xseq))
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+plot(K ~ logmass, data = dcc)
+lines(xseq, mu_mean, lwd = 2)
+shade(mu_PI, xseq)
+```
+
+Now both:
+
+```{r}
+m5.7 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma),
+    mu <- a + bN * N + bM * logmass,
+    a ~ dnorm(0, 0.2),
+    bN ~ dnorm(0, 0.5),
+    bM ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = dcc
+)
+
+precis(m5.7)
+```
+
+Counterfactual plot, manipulating `logmass`, holding N = 0:
+
+```{r}
+xseq <- seq(min(dcc$logmass) - 0.15, max(dcc$logmass) + 0.15, length.out = 30)
+mu <- link(m5.7, data = list(logmass = xseq, N = 0))
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+plot(NULL, xlim = range(dcc$logmass), ylim = range(dcc$K))
+lines(xseq, mu_mean, lwd = 2)
+shade(mu_PI, xseq)
+
+```
+
+Counterfactual plot, manipulating N, holding `logmass` = 0:
+
+```{r}
+xseq <- seq(min(dcc$N) - 0.15, max(dcc$N) + 0.15, length.out = 30)
+mu <- link(m5.7, data = list(logmass = rep(0, 30), N = xseq))
+mu_mean <- apply(mu, 2, mean)
+mu_PI <- apply(mu, 2, PI)
+plot(NULL, xlim = range(dcc$N), ylim = range(dcc$K))
+lines(xseq, mu_mean, lwd = 2)
+shade(mu_PI, xseq)
+
+```
+
+Markov equivalent DAGs:
+
+```{r}
+dags5.7 <- dagitty(
+  "dag{M -> K <- N; M -> N}"
+)
+
+coordinates(dags5.7) <- list(x = c(M = 0, K = 1, N =2), y = c(M = 0, N = 0, K = 1))
+drawdag(dags5.7)
+```
+
+```{r}
+MElist <- equivalentDAGs(dags5.7)
+drawdag(MElist)
+```
+
+## Categorical variables
+
+Model kcals according to slade:
+
+```{r}
+d$clade_id <- as.integer(d$clade)
+d$K <- standardize(d$kcal.per.g)
+
+m5.9 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma),
+    mu <- a[clade_id],
+    a[clade_id] ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(m5.9, depth = 2)
+```
+
