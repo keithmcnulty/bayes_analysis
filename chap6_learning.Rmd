@@ -1,0 +1,82 @@
+---
+title: "Chapter 6"
+author: "Keith McNulty"
+date: "3/04/2022"
+output: html_document
+---
+
+
+## Multicollinear milk
+
+```{r}
+library(rethinking)
+data(milk)
+d <- milk
+
+# standardize
+d$K <- standardize(d$kcal.per.g)
+d$F <- standardize(d$perc.fat)
+d$L <- standardize(d$perc.lactose)
+
+```
+
+
+Two bivariate regressions:
+
+```{r}
+# F vs K
+m6.3 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma), 
+    mu <- a + bF*F, 
+    a ~ dnorm(0, 0.2), 
+    bF ~ dnorm(0, 0.5), 
+    sigma ~ dexp(1) 
+  ),
+  data = d
+)
+
+precis(m6.3)
+```
+```{r}
+# L vs K
+m6.4 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma), 
+    mu <- a + bL*L, 
+    a ~ dnorm(0, 0.2), 
+    bL ~ dnorm(0, 0.5), 
+    sigma ~ dexp(1) 
+  ),
+  data = d
+)
+
+precis(m6.4)
+```
+
+Now a multiple regression with both:
+
+```{r}
+# L ~ F + L
+m6.5 <- quap(
+  alist(
+    K ~ dnorm(mu, sigma), 
+    mu <- a + bF*F + bL*L, 
+    a ~ dnorm(0, 0.2), 
+    bF ~ dnorm(0, 0.5), 
+    bL ~ dnorm(0, 0.5), 
+    sigma ~ dexp(1) 
+  ),
+  data = d
+)
+
+precis(m6.5)
+```
+
+Pair plot:
+
+```{r}
+GGally::ggpairs(d[, c("K", "L", "F")
+                  +===========])
+
+```

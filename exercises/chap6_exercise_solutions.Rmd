@@ -1,0 +1,446 @@
+---
+title: "Chapter 6 Exercise Solutions"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## 'Easy' exercises
+
+### 6E1
+
+1.  *Multicollinearity* - this occurs when two variables $V_1$ and $V_2$ are very highly correlated such that having information on one of them does not add explanatory value when regressed against an outcome if you already have data on the the other.  The model will assume a wide range of independent values for $V_1$ and $V_2$, but in fact it is a more realistic assumption that you are dealing with a single variable $V$ which is influencing $V_1$ and $V_2$ (a fork).  
+
+2. *Post-treatment bias* - this is when a causal pipe occurs, where a variable ($V_1$) influences an intermediate variable ($V_2$) which influences an outcome ($O$). Unless we condition on the intermediate (post-treatment) variable $V_2$, the model may not demonstrate that the $V_1$ influences the outcome.    
+
+3. *Collider bias* - this occurs when two uncorrelated variables ($V_1$ and $V_2$) both influence another variable ($V_3$) independently (collider), which then may in turn influences an outcome (descendant).  In this situation, if we condition on $V_3$ through including it in a regression, we may introduce a (false) association between $V_1$ and $V_2$.  
+
+### 6E2
+
+1.  Interview ratings on 'presentation skills' and 'communcation' may be highly multicollinear, forked by an intermediate personality construct such as 'confidence'
+
+2.  GMAT score may strongly influence a rating on 'academic ability' which may influence whether someone is selected for an MBA program.  Without conditioning on the rating, it may appear that GMAT has no relationship with selection.
+
+3.  In mixed interviews assessing numerical ability and interpersonal skills, it may be that these are independent, but both influence overall interview rating.  This may induce a negative relationship between numerical ability and interpersonal skills in we condition on the overall interview rating.
+
+### 6E3
+
+1.  The fork.  $A \leftarrow B \rightarrow C$.  $A \!\perp\!\!\!\perp C \mid B$.
+2.  The pipe.  $A \rightarrow B \rightarrow C$. $A \!\perp\!\!\!\perp C \mid B$.
+3.  The collider.  $A \rightarrow B \leftarrow C$.  $A \not\!\perp\!\!\!\perp C \mid B$
+4.  The descendent.  $D \leftarrow B$,  $A \rightarrow B \leftarrow C$. Possibly $A \not\!\perp\!\!\!\perp D \mid B$.
+
+### 6E4
+
+In a biased sample, the data has been selected on the basis of some variable (often unobserved).  That variable could be considered to be conditioned on.  In the example at the beginning the the chapter, the sample is biased as only selected papers are in the sample, so we are conditioning on a 'selected' variable.
+
+## 'Medium' exercises
+
+### 6M1
+
+Let's rewrite the DAG:
+
+```{r}
+library(dagitty)
+
+dag6.1_new <- dagitty(
+  "dag{
+    U [unobserved]
+    V [unobserved]
+    X -> Y
+    X <- U <- A -> C -> Y <- V
+    U  -> B <- C <- V
+  }"
+)
+```
+
+There are four paths from X to Y excluding the direct path, as $V$ introduces an extra path option for both original paths.  Let's now look which ones must be closed.  
+
+1. $X \leftarrow U \rightarrow B \leftarrow C \rightarrow Y$ has a collider ($B$) and so it is closed.
+2. $X \leftarrow U \rightarrow B \leftarrow C \leftarrow V \rightarrow Y$ has a collider ($B$) and so it is closed.
+3. $X \leftarrow U \leftarrow A \rightarrow C \leftarrow V \rightarrow Y$ has a collider ($C$) and so it is closed.
+4. $X \leftarrow U \leftarrow A \rightarrow C  \rightarrow Y$ is open with a fork on $A$.  Therefore we need to condition on A.
+
+Check this:
+
+```{r}
+adjustmentSets(dag6.1_new, exposure = "X", outcome = "Y")
+```
+
+### 6M3
+
+1. This has two open backdoor paths.  One has a fork in $A$ and the other has a pipe in $Z$.  Conditioning on $Z$ would resolve this.
+
+```{r}
+dag1 <- dagitty(
+  "dag{
+    Y <- X <- Z <- A -> Y
+    Z -> Y
+  }"
+)
+
+adjustmentSets(dag1, exposure = "X", outcome = "Y")
+```
+
+2. No backdoor paths, therefore no conditioning required.
+
+```{r}
+dag2 <- dagitty(
+  "dag{
+    Y <- X -> Z <- A -> Y
+    Z -> Y
+  }"
+)
+
+adjustmentSets(dag2, exposure = "X", outcome = "Y")
+```
+
+3.  One backdoor path which is closed (collder on $Z$).  No conditioning needed.
+
+```{r}
+dag3 <- dagitty(
+  "dag{
+    Y <- X <- A -> Z <- Y
+    X -> Z
+  }"
+)
+
+adjustmentSets(dag3, exposure = "X", outcome = "Y")
+```
+
+4.  One open backdoor path, with a fork in $A$.  Condition on $A$ to resolve.
+
+```{r}
+dag4 <- dagitty(
+  "dag{
+    Y <- X <- A -> Z -> Y
+    X -> Z
+  }"
+)
+
+adjustmentSets(dag4, exposure = "X", outcome = "Y")
+```
+
+## 'Hard' exercises
+
+### 6H1
+
+So first let's take the DAG from p. 187 and determine what we need to condition on.
+
+```{r}
+dag_waffledivorce <- dagitty(
+  "dag{
+    D <- W <- S -> A -> M -> D
+    S -> M
+    A -> D
+    
+  }"
+)
+
+adjustmentSets(dag_waffledivorce, exposure = "W", outcome = "D")
+```
+
+So we can condition on $A$ and $M$ together or on $S$ alone.  Best to take the easier option:
+
+```{r}
+library(rethinking)
+data("WaffleDivorce")
+d <- WaffleDivorce
+
+d$D <- standardize(d$Divorce)
+d$W <- standardize(d$WaffleHouses)
+d$S <- ifelse(d$South == 1, 2, 1)
+
+
+model <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a[S] + bW*W,
+    a[S] ~ dnorm(0, 0.3),
+    bW ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model, depth = 2)
+```
+
+We can see that Waffle houses have very limited mean influence on Divorce, and certainly could be zero.  Out of interest, let's try the $A$ and $M$ option also:
+
+```{r}
+d$M <- standardize(d$Marriage)
+d$A <- standardize(d$MedianAgeMarriage)
+
+model <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bW*W + bM*M + bA*A,
+    a ~ dnorm(0, 0.2),
+    c(bW, bM, bA) ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model)
+```
+
+This comes out a little differently and suggests a slightly greater likelihood of an influence of Waffle Houses.
+
+### 6H2
+
+Let's first get the conditional independencies:
+
+```{r}
+impliedConditionalIndependencies(dag_waffledivorce)
+```
+
+So let's first test for $A \!\perp\!\!\!\perp W \mid S$.
+
+```{r}
+model <- quap(
+  alist(
+    A ~ dnorm(mu, sigma),
+    mu <- a[S] + bW*W,
+    a[S] ~ dnorm(0, 0.3),
+    bW ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model, depth = 2)
+```
+
+This supports the suggested conditional independency.
+
+Now let's test for $D \!\perp\!\!\!\perp S \mid A, M, W$:
+
+```{r}
+model <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a[S] + bA*A + bM*M + bW*W,
+    a[S] ~ dnorm(0, 0.3),
+    c(bA, bM, bW) ~ dnorm(0, 0.3),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model, depth = 2)
+
+```
+
+There may be some influence of 'southern-ness' on divorce rate here, although both coefficients overlap zero.  There may be unobserved variables at play like 'proportion of people with religious beliefs' or other societal factors.
+
+Finally, let's test $M \!\perp\!\!\!\perp W \mid S$:
+
+```{r}
+model <- quap(
+  alist(
+    M ~ dnorm(mu, sigma),
+    mu <- a[S] + bW*W,
+    a[S] ~ dnorm(0, 0.3),
+    bW ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+precis(model, depth = 2)
+
+```
+
+Again, this is supported.
+
+### 6H3
+
+Load and inspect the `foxes` data:
+```{r}
+data("foxes")
+d <- foxes
+str(d)
+```
+```{r}
+summary(d)
+```
+
+No missing data.  `group` is categorical, so lets standardize the others:
+
+```{r}
+library(dplyr)
+
+d <- d |> 
+  dplyr::mutate(across(c(avgfood, groupsize, area, weight), standardize))
+
+```
+First let's construct the given causal model using a DAG:
+
+```{r}
+foxdag <- dagitty(
+  "dag{
+    area -> avgfood -> groupsize -> weight
+    avgfood -> weight
+  }"
+)
+
+coordinates(foxdag) <- list(
+  x = c(avgfood = 0, area = 0.5, weight = 0.5, groupsize = 1),
+  y = c(weight = 1, avgfood = 0.5, groupsize = 0.5, area = 0)
+)
+
+drawdag(foxdag)
+```
+
+Inferring the causal influence of `area` on `weight`, we see there are no backdoor paths, so we should not have to condition on any of the intermediate variables. Let's confirm this :
+
+```{r}
+adjustmentSets(foxdag, exposure = "area", outcome = "weight")
+```
+
+Good, so let's build a model:
+
+```{r}
+foxmodel1 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b_area*area,
+    a ~ dnorm(0, 0.2),
+    b_area ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Let's extract the priors and simulate on them:
+
+```{r}
+prior <- extract.prior(foxmodel1)
+area_seq <- c(-2, 2)
+mu <- link(foxmodel1, post = prior, data = list(area = area_seq))
+plot(NULL, xlim = c(-2, 2), ylim = c(-5, 5))
+for (i in 1:1000) {
+  lines(area_seq, mu[i, ], col = col.alpha("black", 0.3))
+}
+
+
+```
+Our priors appear reasonable.
+
+Now let's simulate the posterior:
+
+```{r}
+area_seq <- seq(-2, 2, length.out = 30)
+sim_dat <- data.frame(area = area_seq)
+s <- sim(foxmodel1, data = sim_dat)
+mu_mean <- apply(s, 2, mean)
+mu_PI <- apply(s, 2, PI)
+plot(NULL, xlim = c(-2, 2), ylim = c(-5, 5))
+lines(area_seq, mu_mean)
+shade(mu_PI, area_seq)
+
+```
+
+The posterior prediction interval is narrower, but there is no indication of a causal influence of `area` on `weight`.  We can also use `precis()` to confirm a likely zero coefficient for `area`.
+
+```{r}
+precis(foxmodel1)
+```
+
+### 6H4
+
+Let's check whether we need to condition when understanding the causal influence of `avgfood` on `weight`. It doesn't look like we do as there is no backdoor path.
+
+```{r}
+adjustmentSets(foxdag, exposure = "avgfood", outcome = "weight")
+```
+
+Good, so now we can just run a simple linear regression:
+
+```{r}
+foxmodel2 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b_avgfood*avgfood,
+    a ~ dnorm(0, 0.2),
+    b_avgfood ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Again let's check priors are reasonable:
+
+```{r}
+prior <- extract.prior(foxmodel2)
+avgfood_seq <- c(-2, 2)
+mu <- link(foxmodel2, post = prior, data = list(avgfood = avgfood_seq))
+plot(NULL, xlim = c(-2, 2), ylim = c(-5, 5))
+for (i in 1:1000) {
+  lines(avgfood_seq, mu[i, ], col = col.alpha("black", 0.3))
+}
+```
+
+Again, reasonable.  Let's check coefficients:
+
+```{r}
+precis(foxmodel2)
+```
+
+No causal influence of `avgfood` on `weight`.  This is consistent with no causal influence of `area` given this is a pipe.
+
+### 6H5
+
+There is an open backdoor from `groupsize` to `weight`, which will be addressed by conditioning on `avgfood` - let's confirm that.
+
+```{r}
+adjustmentSets(foxdag, exposure = "groupsize", outcome = "weight")
+```
+
+Good.  So let's build a multiple linear regression:
+
+```{r}
+foxmodel3 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b_avgfood*avgfood + b_groupsize*groupsize,
+    a ~ dnorm(0, 0.2),
+    b_avgfood ~ dnorm(0, 0.5),
+    b_groupsize ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+Let's look at the posterior coefficients:
+
+```{r}
+precis(foxmodel3)
+```
+
+Clearly `groupsize` has a causal influence on `weight`.  So the area influences the amount of food which attracts larger groups.   Since we cannot support area or food having an independent effect on weight. we are left with this revised DAG:
+
+```{r}
+foxdag <- dagitty(
+  "dag{
+    area -> avgfood -> groupsize -> weight
+  }"
+)
+
+coordinates(foxdag) <- list(
+  x = c(area = 0, avgfood = 0.33, groupsize = 0.66, weight = 1),
+  y = c(weight = 0, avgfood = 0, groupsize = 0, area = 0)
+)
+
+drawdag(foxdag)
+
+```
+
