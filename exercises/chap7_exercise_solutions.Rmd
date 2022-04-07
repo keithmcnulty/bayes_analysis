@@ -1,0 +1,303 @@
+---
+title: "Chapter 7 Exercise Solutions"
+author: "Keith McNulty"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(rethinking)
+```
+
+## 'Easy' exercises
+
+### 7E1
+
+Any measure of information entropy should be:
+
+1.  **Continuous**, in order to avoid a situation where a miniscule change in the probability of an event would lead to a much larger change in overall uncertainty.
+
+2.  **Increasing with the number of possible events**, as intuitively any situation where more things can happen leads to greater overall uncertainty.
+
+3.  **Additive**, to ensure that the overall uncertainty around combinations of events are the sum of the overall uncertainties of the individual events.
+
+### 7E2
+
+The entropy of the coin is $-(0.7 \times \ln{0.7}) + 0.3 \times \ln{0.3})$, which equals `r round(-(0.7*log(0.7) + 0.3*log(0.3)), 2)`
+
+### 7E3
+
+Calculate $H(p)$:
+
+```{r}
+p <- c(0.2, 0.25, 0.25, 0.3)
+
+-sum(p*log(p))
+
+```
+
+### 7E4
+
+Remember that events with zero probability have infinite log-probability and should be removed. Calculate $H(q)$:
+
+```{r}
+q <- c(1/3, 1/3, 1/3)
+
+-sum(q*log(q))
+```
+
+## 'Medium' exercises
+
+### 7M1
+
+$\mathrm{AIC} = 2(p - \mathrm{lppd})$ where $\mathrm{lppd}$ is the log-pointwise-predictive-density, defined as
+
+$$
+\mathrm{lppd} = \Sigma_{i = 1}^{N}\frac{1}{S}\Sigma_{s = 1}^{S}\ln{P(y_i\mid\theta_{-i, s})}
+$$
+
+using leave-one-out cross validation and where $p$ is the number of free parameters in the posterior distribution.
+
+$\mathrm{WAIC} = 2(\Sigma_{i}\mathrm{var}_{\theta}\ln{p(y_i\mid\theta)} - \mathrm{lppd})$
+
+The $\mathrm{AIC}$ is simpler because it uses the number of free parameters as a penalty term.  
+
+
+$\mathrm{WAIC}$ is more general.  $\mathrm{AIC}$ is only reliable when 
+
+1. Using flat priors or where priors are overwhelmed by likelihood
+2. The posterior distribution is approximately normal
+3. The sample size is much greater than the number of parameters
+
+### 7M2
+
+Model selection involves discarding models that do not meet certain information criteria.  Model comparison does not discard models but uses comparisons of their information criteria to make conclusions about relative accuracy and the predictive effects of specific variables and can help with causal inference.
+
+### 7M3
+
+This relates to the way $\mathrm{lppd}$ is defined (see 7M1).  In a larger sample, more is added to $\mathrm{lppd}$, and since logs of probabilities are negative, this makes $\mathrm{lppd}$ more and more negative.  This will decrease $\mathrm{lppd}$ and it will increase measures like $\mathrm{AIC}$, $\mathrm{WAIC}$ and $\mathrm{PSIS}$.  Therefore, if you compare two models using different sample sizes, you may be fooled into thinking that one is less predictive just because there is a larger sample, and not necessarily because there is a difference in predictive accuracy.  
+
+### 7M4
+
+The effective number of parameters is the first term in the formula for $\mathrm{WAIC}$ as given in 7M1.  If a prior becomes more concentrated, then extreme probabilities are less likely to occur in the formula and therefore the variances in the first term will be smaller.  This will reduce the $\mathrm{WAIC}$, indicating a reduction in information loss/a more predictive model.
+
+### 7M5
+
+Informative priors are less tolerant of extreme values in the training set when determining model parameters.  Therefore the model will not get overexcited by unusual data, and will keep parameters within certain bounds based on the (hopefully) scientific judgement that the priors represent. In theory, this reduces the chance of overfitting.
+
+### 7M6
+
+Overly informative priors will increase the chance that data will be ignored in favor of a very narrow range of plausible parameter values.  This will encourage the model towards a fit using less information from the data, which risks underfitting.
+
+## 'Hard' exercises
+
+### 7H1
+
+Let's get the data and fit a straight like and a couple of curved models:
+
+```{r}
+data("Laffer")
+d <- Laffer
+str(d)
+```
+
+`tax_rate` looks like it is a percent value, but it's hard to know what `tax_revenue` is and I'm worried that it may not be adjusted for population size, which could be a big problem.  In any case let's standardize these measures:
+
+```{r}
+library(dplyr)
+d <- d |> 
+  mutate(across(everything(), standardize))
+```
+
+OK, now let's start fitting some models:
+
+```{r}
+# straight line model with vague priors
+m1 <- quap(
+  alist(
+    tax_revenue ~ dnorm(mu, sigma),
+    mu <- a + b*tax_rate,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+# quadratic model
+m2 <- quap(
+  alist(
+    tax_revenue ~ dnorm(mu, sigma),
+    mu <- a + b[1]*tax_rate + b[2]*tax_rate^2,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0))
+)
+
+# cubic model
+m3 <- quap(
+  alist(
+    tax_revenue ~ dnorm(mu, sigma),
+    mu <- a + b[1]*tax_rate + b[2]*tax_rate^2 + b[3]*tax_rate^3,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0, 0))
+)
+```
+
+Let's compare on WAIC and PSIS:
+
+```{r}
+compare(m1, m2, m3)
+```
+
+```{r}
+compare(m1, m2, m3, func = PSIS)
+```
+
+There doesn't appear to be a great deal of difference between these models using WAIC or PSIS.  However, I did receive a k-value warning from PSI so it looks like there may be some naughty outliers here.
+
+### 7H2
+
+Let's calculate pointwise WAIC and PSIS and plot them for each model.
+
+```{r}
+library(ggplot2)
+
+plot_waic_psis <- function(model) {
+  pWAIC <- WAIC(model, pointwise = TRUE)
+  pPSIS <- PSIS(model, pointwise = TRUE)
+  
+  ggplot() +
+  geom_point(aes(x = pPSIS$k, y = pWAIC$penalty), color = "darkblue") +
+  labs(x = "Pareto k", y = "WAIC penalty") +
+  theme_minimal()
+}
+
+gridExtra::grid.arrange(
+  plot_waic_psis(m1),
+  plot_waic_psis(m2),
+  plot_waic_psis(m3),
+  nrow = 1
+)
+```
+
+
+Oh, wow!  That's quite an outlier.  
+
+As suggested, let's us a Student's t-distribution with the thickest tails to try more robust regression.
+
+```{r}
+# straight line model with vague priors
+m1 <- quap(
+  alist(
+    tax_revenue ~ dstudent(2, mu, sigma),
+    mu <- a + b*tax_rate,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+# quadratic model
+m2 <- quap(
+  alist(
+    tax_revenue ~ dstudent(2, mu, sigma),
+    mu <- a + b[1]*tax_rate + b[2]*tax_rate^2,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0))
+)
+
+# cubic model
+m3 <- quap(
+  alist(
+    tax_revenue ~ dstudent(2, mu, sigma),
+    mu <- a + b[1]*tax_rate + b[2]*tax_rate^2 + b[3]*tax_rate^3,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0, 0))
+)
+```
+
+Now let's compare again:
+
+```{r}
+compare(m1, m2, m3)
+```
+```{r}
+compare(m1, m2, m3, func = PSIS)
+```
+
+Now that the most extreme k value has been addressed, both measures tend to preference the quadratic model, although there is still not a great deal of difference between them. 
+
+### 7H3
+
+Let's create a dataframe with the island data:
+
+```{r}
+d = data.frame(
+  species = c("A", "B", "C", "D", "E"),
+  island1 = c(0.2, 0.2, 0.2, 0.2, 0.2),
+  island2 = c(0.8, 0.1, 0.05, 0.025, 0.025),
+  island3 = c(0.05, 0.15, 0.7, 0.05, 0.05)
+)
+```
+
+Let's compute the entropy of each island's bird distribution:
+
+```{r}
+entropy <- function(pvec) -sum(pvec*log(pvec))
+
+apply(d[ ,-1], 2, entropy)
+```
+
+Island 1 has the highest entropy.  This makes sense, because if all the birds are in equal proportion, there is not a great deal of surprise if we see any particular bird, .  Island 2 has the lowest entropy, because there is one dominant species and so it would be very surprising to see some of the other species.
+
+Now let's calculate the KL divergence for each pair of distinct islands.  
+
+```{r}
+kl_div <- function(p, q) {
+  sum(p * (log(p) - log(q)))
+}
+
+kl_div1.2 <- kl_div(d$island1, d$island2) 
+kl_div1.3 <- kl_div(d$island1, d$island3) 
+kl_div2.1 <- kl_div(d$island2, d$island1) 
+kl_div2.3 <- kl_div(d$island2, d$island3) 
+kl_div3.1 <- kl_div(d$island3, d$island1) 
+kl_div3.2 <- kl_div(d$island3, d$island2) 
+```
+
+Let's look at Island 1 as a predictor of Islands 2 and 3:
+
+```{r}
+c(island2 = kl_div1.2, island3 = kl_div1.3)
+```
+
+Now Island 2 as a predictor of Islands 1 and 3:
+
+```{r}
+c(island1 = kl_div2.1, island3 = kl_div2.3)
+```
+
+Finally Island 3 as a predictor of Islands 1 and 2:
+
+```{r}
+c(island1 = kl_div3.1, island2 = kl_div3.2)
+```
+
+We can conclude that the lowest divergences occur when Island 1 is used as the predictor.  This is because it has the highest entropy.   Because the populations are more concentrated on one bird in Islands 2 and 3, using these as the predictor would lead to more surprises and hence greater divergence.
