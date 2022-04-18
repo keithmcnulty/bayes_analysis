@@ -6,6 +6,9 @@ output: html_document
 
 ```{r setup, echo = FALSE}
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
 library(rethinking)
 ```
 
@@ -301,3 +304,168 @@ c(island1 = kl_div3.1, island2 = kl_div3.2)
 ```
 
 We can conclude that the lowest divergences occur when Island 1 is used as the predictor.  This is because it has the highest entropy.   Because the populations are more concentrated on one bird in Islands 2 and 3, using these as the predictor would lead to more surprises and hence greater divergence.
+
+### 7H4
+
+Bring back models `m6.9` and `m6.10` from previous chapter:
+
+```{r}
+# simulate marriage dataset
+d <- sim_happiness(seed = 1977, N_years = 1000)
+
+# scale age for adults only
+d2 <- d[d$age > 17, ]
+d2$A <- (d2$age - 18)/(65 - 18)
+
+# construct marriage status categorical variable
+d2$mid <- d2$married + 1
+
+# first model (inc marriage status)
+m6.9 <- quap(
+  alist(
+    happiness ~ dnorm(mu, sigma),
+    mu <- a[mid] + bA*A,
+    a[mid] ~ dnorm(0, 1),
+    bA ~ dnorm(0, 2),
+    sigma ~ dexp(1)
+  ),
+  data = d2
+)
+
+# second model (excl marriage status)
+m6.10 <- quap(
+  alist(
+    happiness ~ dnorm(mu, sigma),
+    mu <- a + bA*A,
+    a ~ dnorm(0, 1),
+    bA ~ dnorm(0, 2),
+    sigma ~ dexp(1)
+  ),
+  data = d2
+)
+```
+
+Compare using WAIC:
+
+```{r}
+compare(m6.9, m6.10)
+```
+
+Let's look at the DAG for this problem:
+
+```{r}
+dag <- dagitty::dagitty("dag{A -> M <- H}")
+dagitty::coordinates(dag) <- list(x = c(A = 0, M = 0.5, H = 1), y = c(A = 0, M = 0, H = 0))
+drawdag(dag)
+
+```
+
+Because married status is a collider, by including all three variables in `m6.9` we condition on marriage which creates a statistical relationship between age and happiness, even though such a causal relationship does not exist.  This means that in `m6.9` if we increase age, we make people more happy, and hence the predictability of happiness increases in model `m6.9` compares to model `m6.10`, thus generating a lower WAIC.  However, this is not an accurate reflection of underlying causality.  
+
+### 7H5
+
+Lets load and standardize the fox data:
+
+```{r}
+library(dplyr)
+
+data(foxes)
+d <- foxes
+
+d <- d |> 
+  dplyr::mutate(across(c(avgfood, groupsize, area, weight), standardize))
+```
+
+Let's create the five models:
+
+```{r}
+fox1 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b[1]*avgfood + b[2]*groupsize + b[3]*area,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0, 0))
+)
+
+fox2 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b[1]*avgfood + b[2]*groupsize,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0))
+)
+
+fox3 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b[1]*groupsize + b[2]*area,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d,
+  start = list(b = c(0, 0))
+)
+
+fox4 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b[1]*avgfood,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+fox5 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + b[1]*area,
+    a ~ dnorm(0, 0.2),
+    b ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+
+```
+
+
+Now let's compare WAIC scores:
+
+```{r}
+compare(fox1, fox2, fox3, fox4, fox5)
+```
+
+Reminding ourselves of the causal model suggested for this problem, we have the following causal pipe:
+
+```{r}
+foxdag <- dagitty(
+  "dag{
+    area -> avgfood -> groupsize -> weight
+    avgfood -> weight
+  }"
+)
+
+coordinates(foxdag) <- list(
+  x = c(avgfood = 0, area = 0.5, weight = 0.5, groupsize = 1),
+  y = c(weight = 1, avgfood = 0.5, groupsize = 0.5, area = 0)
+)
+
+drawdag(foxdag)
+```
+
+In models 1 to 3, the `groupsize` variable is included.  This means that there is an open backdoor path in our causal model, and we can close it by conditioning on `avgfood`, `area` or both (since there is only one path from `area` to `avgfood`).  Hence all three models show similar results.  
+
+In models 4 and 5, we do not include `groupsize`, so there are no backdoor paths.  Since there is only one path from `area` to `avgfood`, then both models show very similar results.
+
+Models 1 to 3 give a better WAIC because they contain more information.
